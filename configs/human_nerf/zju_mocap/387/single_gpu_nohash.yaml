@@ -1,0 +1,86 @@
+task: 'zju_mocap'
+subject: 'p387'
+experiment: 'single_gpu_nohash'  ######################
+
+# canonical mlp
+canonical_mlp:
+  module: 'core.nets.human_nerf.canonical_mlps.mlp_rgb_sigma'
+  mlp_depth: 2            # layers in network
+  mlp_width: 64           # channels per layer
+  cnl_pos_embed_size: 32  # canonical positional embedding size
+  multires: 10            # log2 of max freq for positional encoding (3D location)
+  i_embed: 0              # set 0 for default positional encoding, -1 for none
+
+##############################################
+## Data Configuration
+
+train:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_387_train'
+  shuffle: True             # [True] ######################
+  maxiter: 100000           # [400000]
+  log_interval: 10          # [20] show log information
+  save_model_interval: 2000 # [50000] checkpoint
+  seed: 0                   # by dj
+  lossweights:
+    lpips: 1.0
+    mse: 0.2
+    opacity: 0.0            # [0.] ######################
+    l1: 0.0                 # [0.]
+    psnr: 0.0               # [0.]
+
+progress:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_387_test'
+  dump_interval: 5000       # [5000]
+
+movement:
+  dataset_module: 'core.data.human_nerf.train'
+  dataset: 'zju_387_test'
+
+freeview:
+  dataset_module: 'core.data.human_nerf.freeview'
+  dataset: 'zju_387_test'
+
+tpose:
+  dataset_module: 'core.data.human_nerf.tpose'
+  dataset: 'zju_387_test'
+
+bgcolor: [0., 0., 0.]
+resize_img_scale: 0.5
+
+
+
+ 
+
+##############################################
+## EXPERIMENTS CONFIGURATIONS
+## Overwrite default parameters (/superhumannerf/configs/default.yaml)
+
+resize_img_scale: 0.5       # try: 0.6; [0.5] ######################
+
+train_keyfilter: ['rays',
+                  'motion_bases', 'motion_weights_priors',
+                  'cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
+test_keyfilter: ['rays', 'target_rgbs', 
+                 'motion_bases', 'motion_weights_priors',
+                  'cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
+motionCLIP:
+  encoded_feats: 'motionCLIP_token[s]_nbrs[1].pkl' # token: z/s(self); neighborhoods: #neighbors 
+  training_frames_poseDistinct: False ######################
+  training_frames_lossDistinct: False ######################
+ 
+total_bones: 24
+bbox_offset: 0.3  
+
+load_net: latest
+
+patch:
+  sample_subject_ratio: 0.8 # [0.8] ######################
+  N_patches: 6              # try: 10; [6] ######################
+  size: 20                  # try: 16; single_gpu [20]; adventure[32] ######################
+
+network:
+  ignore_pose_correction: False   # dj
+  ignore_non_rigid_motions: False # dj: see line 149
+  apply_hash_coding: False        # dj

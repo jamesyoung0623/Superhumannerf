@@ -1,0 +1,5 @@
+# ninja log v5
+0	24652	1673419322167584213	/home/djchen/PROJECTS/HumanNeRF/torch-ngp/raymarching/build/temp.linux-x86_64-cpython-37/home/djchen/PROJECTS/HumanNeRF/torch-ngp/raymarching/src/bindings.o	ee6a5e1e5d4c18f9
+1	48410	1673419345939531354	/home/djchen/PROJECTS/HumanNeRF/torch-ngp/raymarching/build/temp.linux-x86_64-cpython-37/home/djchen/PROJECTS/HumanNeRF/torch-ngp/raymarching/src/raymarching.o	f72ff8acf3253393
+5	20016	1675829210110791624	/home/djchen/PROJECTS/HumanNeRF/supermannerf/torch-ngp/raymarching/build/temp.linux-x86_64-cpython-37/home/djchen/PROJECTS/HumanNeRF/supermannerf/torch-ngp/raymarching/src/bindings.o	a0a7c99a909672c5
+18	36270	1675831544724898178	/home/djchen/PROJECTS/HumanNeRF/supermannerf/torch-ngp/raymarching/build/temp.linux-x86_64-cpython-37/home/djchen/PROJECTS/HumanNeRF/supermannerf/torch-ngp/raymarching/src/raymarching.o	1c2c7186106788bc
