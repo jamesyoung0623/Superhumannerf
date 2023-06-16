@@ -1,0 +1,13 @@
+dataset:
+  # people_snapshot_path: /data/dataset/people_snapshot
+  people_snapshot_path: ../../../People_Snapshot # dj
+  subject: 'male-3-casual'
+  sex: 'neutral'
+
+training_view: 0
+max_frames: 400
+
+output:
+  # dir: ../../dataset/people_snapshot
+  dir: ../../../datasets/people_snapshot    # dj
+  name: 'male-3-casual'

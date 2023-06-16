@@ -1,0 +1,14 @@
+dataset:
+  # zju_mocap_path: /data/dataset/zju_mocap
+  zju_mocap_path: ../../../ZJU-Mocap # dj
+  subject: '377'
+  sex: 'neutral'
+
+training_view: 0
+max_frames: 540
+# max_frames: 100
+
+output:
+  # dir: ../../dataset/zju_mocap
+  dir: ../../../datasets/zju_mocap    # dj
+  name: '377'
