@@ -1,10 +1,6 @@
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19_test4'  ######################
-
-# canonical mlp
-canonical_mlp:
-  cnl_pos_embed_size: 32  # canonical positional embedding size
+experiment: 'single_gpu_hash_2_64_2048_2^19'  ######################
 
 ##############################################
 ## Data Configuration

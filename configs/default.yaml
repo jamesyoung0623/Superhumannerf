@@ -18,12 +18,6 @@ embedder:
 non_rigid_embedder:
   module: "core.nets.human_nerf.embedders.hannw_fourier"
 
-# canonical mlp
-canonical_mlp:
-  module: 'core.nets.human_nerf.canonical_mlps.mlp_rgb_sigma'
-  multires: 10         # log2 of max freq for positional encoding (3D location)
-  i_embed: 0           # set 0 for default positional encoding, -1 for none
-
 # motion weights volume
 mweight_volume:
   module: 'core.nets.human_nerf.mweight_vol_decoders.deconv_vol_decoder'

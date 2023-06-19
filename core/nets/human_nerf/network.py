@@ -48,12 +48,6 @@ class Network(nn.Module):
             output_device=cfg.secondary_gpus[0]
         )
 
-        # Canonical MLP -------------------------------------------------------
-        # canonical positional encoding
-        get_embedder = load_positional_embedder(cfg.embedder.module)   # dj
-        cnl_pos_embed_fn, cnl_pos_embed_size = get_embedder(cfg.canonical_mlp.multires, cfg.canonical_mlp.i_embed)
-        self.pos_embed_fn = cnl_pos_embed_fn
-        
         # pose correction -------------------------------------------
         # load_pose_decoder: (core/nets/human_nerf/pose_decoders/mlp_delta_body_pose.py)
         self.pose_decoder = load_pose_decoder(cfg.pose_decoder.module)(
@@ -144,7 +138,7 @@ class Network(nn.Module):
         return self
 
 
-    def _query_mlp(self, pos_xyz, pos_dir, pos_embed_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input):
+    def _query_mlp(self, pos_xyz, pos_dir, non_rigid_pos_embed_fn, non_rigid_mlp_input):
 
         # (N_rays, N_samples, 3) --> (N_rays x N_samples, 3) 
         pos_flat = torch.reshape(pos_xyz, [-1, pos_xyz.shape[-1]])   # dj: [307200, 3]
@@ -154,7 +148,6 @@ class Network(nn.Module):
         result = self._apply_mlp_kernels(
             pos_flat=pos_flat,
             dir_flat=dir_flat,
-            pos_embed_fn=pos_embed_fn,
             non_rigid_mlp_input=non_rigid_mlp_input,
             non_rigid_pos_embed_fn=non_rigid_pos_embed_fn,
             chunk=chunk
@@ -175,7 +168,7 @@ class Network(nn.Module):
         return input_data.expand((total_elem, input_size))
 
 
-    def _apply_mlp_kernels(self, pos_flat, dir_flat, pos_embed_fn, non_rigid_mlp_input, non_rigid_pos_embed_fn, chunk):
+    def _apply_mlp_kernels(self, pos_flat, dir_flat, non_rigid_mlp_input, non_rigid_pos_embed_fn, chunk):
         raws = []
 
         # iterate ray samples by trunks
@@ -354,7 +347,7 @@ class Network(nn.Module):
         return z_vals
 
 
-    def _render_rays(self, ray_batch, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, pos_embed_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input=None, bgcolor=None, **_):
+    def _render_rays(self, ray_batch, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, non_rigid_pos_embed_fn, non_rigid_mlp_input=None, bgcolor=None, **_):
         
         N_rays = ray_batch.shape[0]
         rays_o, rays_d, near, far = self._unpack_ray_batch(ray_batch)
@@ -390,7 +383,6 @@ class Network(nn.Module):
             pos_xyz=cnl_pts,
             pos_dir=pts_dir,
             non_rigid_mlp_input=non_rigid_mlp_input,
-            pos_embed_fn=pos_embed_fn,
             non_rigid_pos_embed_fn=non_rigid_pos_embed_fn
         )
         raw = query_result['raws']
@@ -448,7 +440,6 @@ class Network(nn.Module):
             non_rigid_mlp_input = dst_posevec
 
         kwargs.update({
-            "pos_embed_fn": self.pos_embed_fn,
             "non_rigid_pos_embed_fn": non_rigid_pos_embed_fn,
             "non_rigid_mlp_input": non_rigid_mlp_input
         })
