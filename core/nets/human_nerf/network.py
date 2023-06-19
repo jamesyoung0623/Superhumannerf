@@ -156,7 +156,7 @@ class Network(nn.Module):
         )
 
         self.rgb_net = tcnn.Network(
-            n_input_dims=32, n_output_dims=3,
+            n_input_dims=32, n_output_dims=4,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
@@ -188,15 +188,7 @@ class Network(nn.Module):
         return self
 
 
-    def _query_mlp(
-            self,
-            pos_xyz,                                                 # dj: [2400, 128, 3]
-            pos_dir,                                                 # dj: [2400, 128, 3]
-            pos_embed_fn, 
-            pos_hash_fn,
-            dir_sphar_fn,
-            non_rigid_pos_embed_fn,
-            non_rigid_mlp_input):
+    def _query_mlp(self, pos_xyz, pos_dir, pos_embed_fn, pos_hash_fn, dir_sphar_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input):
 
         # (N_rays, N_samples, 3) --> (N_rays x N_samples, 3) 
         pos_flat = torch.reshape(pos_xyz, [-1, pos_xyz.shape[-1]])   # dj: [307200, 3]
@@ -263,19 +255,18 @@ class Network(nn.Module):
                 #dir_embedded = dir_sphar_fn(dir) # dj: 3D direction --> 16D dir_embedded
                 #cnl_mlp_output = self.cnl_mlp(pos_embedded=pos_embedded, dir_embedded=dir_embedded, hash_encode=cfg.network.apply_hash_coding)
                 
-                # !!! no normalize converge slow
-                pos_embedded = self.xyz_encoder(xyz).type(torch.FloatTensor).cuda()
-
-                # !!! sigma converge slow, normalize converge fast
+                # !!! sigma can not converge
                 sigmas, pos_embedded = self.density(xyz, return_feat=True)
 
                 # !!! dir can not converge
-                #dir_embedded = dir/torch.norm(dir, dim=1, keepdim=True)
-                #dir_embedded = self.dir_encoder((dir_embedded+1)/2).cuda()
+                #dir = dir/torch.norm(dir, dim=1, keepdim=True)
+                #dir_embedded = self.dir_encoder(dir).cuda()
+                #dir_embedded = self.dir_encoder((dir+1)/2).cuda()
 
-                #cnl_mlp_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
-                #cnl_mlp_output = self.rgb_net(pos_embedded)
-                cnl_mlp_output = torch.cat([pos_embedded, sigmas.view(-1, 1)], 1)
+                #rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
+                rgb_output = self.rgb_net(pos_embedded)
+                #cnl_mlp_output = torch.cat([rgb_output, sigmas.view(-1, 1)], 1)
+                cnl_mlp_output = rgb_output
                 
                 #if self.rgb_act == 'None': # rgbs is log-radiance
                 #    if kwargs.get('output_radiance', False): # output HDR map
@@ -321,11 +312,11 @@ class Network(nn.Module):
         dists = torch.cat([dists, infinity_dists], dim=-1) 
         dists = dists * torch.norm(rays_d[...,None,:], dim=-1)                 # [N_rays, N_samples]
 
-        rgb = torch.sigmoid(raw[...,:3])                                       # [N_rays, N_samples, 3]
+        rgb = torch.sigmoid(raw[..., :3])                                       # [N_rays, N_samples, 3]
 
         # F.relu(raw[...,3]) * dists
 
-        alpha = _raw2alpha(raw[...,3], dists)                                  # [N_rays, N_samples]
+        alpha = _raw2alpha(raw[..., 3], dists)                                  # [N_rays, N_samples]
         alpha = alpha * raw_mask[:, :, 0]                                      # [N_rays, N_samples]
         weights = alpha * torch.cumprod( torch.cat([torch.ones((alpha.shape[0], 1)).to(alpha), 1.-alpha + 1e-10], dim=-1), dim=-1)[:, :-1]
         rgb_map = torch.sum(weights[...,None] * rgb, -2)                       # [N_rays, 3]

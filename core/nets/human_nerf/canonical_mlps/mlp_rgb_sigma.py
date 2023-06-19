@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F # dj
+import torch.nn.functional as F
 
 from core.utils.network_util import initseq
 from core.nets.human_nerf.activation import trunc_exp  # dj

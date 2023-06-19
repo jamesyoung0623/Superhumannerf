@@ -1,11 +1,11 @@
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19'  ######################
+experiment: 'single_gpu_hash_12_512_2048_2^19'  ######################
 
 # canonical mlp
 canonical_mlp:
-  mlp_depth: 2            # layers in network
-  mlp_width: 64           # channels per layer
+  mlp_depth: 12            # layers in network
+  mlp_width: 512          # channels per layer
   cnl_pos_embed_size: 32  # canonical positional embedding size
 
 ##############################################
