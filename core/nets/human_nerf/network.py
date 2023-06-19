@@ -4,7 +4,6 @@ import torch.nn.functional as F
 
 from core.utils.network_util import MotionBasisComputer
 from core.nets.human_nerf.component_factory import load_positional_embedder, load_canonical_mlp, load_mweight_vol_decoder, load_pose_decoder, load_non_rigid_motion_mlp
-from core.nets.human_nerf.encoding import get_encoder  # dj
 
 from configs import cfg
 from datetime import datetime
@@ -14,19 +13,6 @@ import numpy as np
 from ngp_pl.models.custom_functions import TruncExp
 
 
-#from torch import Tensor
-#import nerfacc 
-#from nerfacc.estimators.occ_grid import OccGridEstimator
-#from radiance_fields.ngp import NGPRadianceField
-
-#from utils import (
-#    MIPNERF360_UNBOUNDED_SCENES,
-#    NERF_SYNTHETIC_SCENES,
-#    render_image_with_occgrid,
-#    render_image_with_occgrid_test,
-#    set_random_seed,
-#)
-
 class Network(nn.Module):
     def __init__(self):
         super(Network, self).__init__()
@@ -35,7 +21,6 @@ class Network(nn.Module):
         self.motion_basis_computer = MotionBasisComputer(total_bones=cfg.total_bones)
 
         # motion weight volume
-        # load_mweight_vol_decoder: (core/nets/human_nerf/mweight_vol_decoders/deconv_vol_decoder.py)
         self.mweight_vol_decoder = load_mweight_vol_decoder(cfg.mweight_volume.module)(
             embedding_size=cfg.mweight_volume.embedding_size,
             volume_size=cfg.mweight_volume.volume_size,
@@ -44,13 +29,11 @@ class Network(nn.Module):
 
         # Non-rigid motion ----------------------------------------------
         # non-rigid motion st positional encoding
-        # load_positional_embedder: (core/nets/human_nerf/embedders/hannw_fourier.py)
         self.get_non_rigid_embedder = load_positional_embedder(cfg.non_rigid_embedder.module)
 
         # non-rigid motion MLP
         _, non_rigid_pos_embed_size = self.get_non_rigid_embedder(cfg.non_rigid_motion_mlp.multires, cfg.non_rigid_motion_mlp.i_embed)
 
-        # load_non_rigid_motion_mlp: (core/nets/human_nerf/non_rigid_motion_mlps/mlp_offset.py)
         self.non_rigid_mlp = load_non_rigid_motion_mlp(cfg.non_rigid_motion_mlp.module)(
             pos_embed_size=non_rigid_pos_embed_size,
             condition_code_size=cfg.non_rigid_motion_mlp.condition_code_size,
@@ -71,32 +54,6 @@ class Network(nn.Module):
         cnl_pos_embed_fn, cnl_pos_embed_size = get_embedder(cfg.canonical_mlp.multires, cfg.canonical_mlp.i_embed)
         self.pos_embed_fn = cnl_pos_embed_fn
         
-        self.pos_hash_fn, self.in_dim = get_encoder("hashgrid")
-        self.dir_sphar_fn, self.in_dim_dir = get_encoder("sphere_harmonics")
-
-        if cfg.network.apply_hash_coding:           
-            skips = None # dj: should smaller than cfg.canonical_mlp.mlp_depth #################
-            self.cnl_mlp = load_canonical_mlp(cfg.canonical_mlp.module)(
-                input_ch=cfg.canonical_mlp.cnl_pos_embed_size, 
-                mlp_depth=cfg.canonical_mlp.mlp_depth, 
-                mlp_width=cfg.canonical_mlp.mlp_width,
-                skips=skips
-            )            
-        else:
-            skips = None # dj: should smaller than cfg.canonical_mlp.mlp_depth #################
-            self.cnl_mlp = load_canonical_mlp(cfg.canonical_mlp.module)(
-                input_ch=cnl_pos_embed_size, 
-                mlp_depth=cfg.canonical_mlp.mlp_depth, 
-                mlp_width=cfg.canonical_mlp.mlp_width,
-                skips=skips
-            )
-        
-        self.cnl_mlp = nn.DataParallel(
-            self.cnl_mlp,
-            device_ids=cfg.secondary_gpus,
-            output_device=cfg.primary_gpus[0]
-        )
-
         # pose correction -------------------------------------------
         # load_pose_decoder: (core/nets/human_nerf/pose_decoders/mlp_delta_body_pose.py)
         self.pose_decoder = load_pose_decoder(cfg.pose_decoder.module)(
@@ -120,7 +77,7 @@ class Network(nn.Module):
         self.cascades = max(1+int(np.ceil(np.log2(2*scale))), 1)
         self.grid_size = 128
         self.register_buffer('density_bitfield', torch.zeros(self.cascades*self.grid_size**3//8, dtype=torch.uint8))
-
+        
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16; 
         b = np.exp(np.log(2048*scale/N_min)/(L-1))
@@ -167,7 +124,7 @@ class Network(nn.Module):
         )
 
         #if self.rgb_act == 'None': # rgb_net output is log-radiance
-        #    for i in range(3): # independent tonemappers for r,g,b
+        #    for i in range(3):
         #        tonemapper_net = tcnn.Network(
         #            n_input_dims=1, n_output_dims=1,
         #            network_config={
@@ -181,14 +138,13 @@ class Network(nn.Module):
         #        setattr(self, f'tonemapper_net_{i}', tonemapper_net)
 
     def deploy_mlps_to_secondary_gpus(self):
-        self.cnl_mlp = self.cnl_mlp.to(cfg.secondary_gpus[0])
         if self.non_rigid_mlp:
             self.non_rigid_mlp = self.non_rigid_mlp.to(cfg.secondary_gpus[0])
 
         return self
 
 
-    def _query_mlp(self, pos_xyz, pos_dir, pos_embed_fn, pos_hash_fn, dir_sphar_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input):
+    def _query_mlp(self, pos_xyz, pos_dir, pos_embed_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input):
 
         # (N_rays, N_samples, 3) --> (N_rays x N_samples, 3) 
         pos_flat = torch.reshape(pos_xyz, [-1, pos_xyz.shape[-1]])   # dj: [307200, 3]
@@ -199,8 +155,6 @@ class Network(nn.Module):
             pos_flat=pos_flat,
             dir_flat=dir_flat,
             pos_embed_fn=pos_embed_fn,
-            pos_hash_fn=pos_hash_fn,
-            dir_sphar_fn=dir_sphar_fn,
             non_rigid_mlp_input=non_rigid_mlp_input,
             non_rigid_pos_embed_fn=non_rigid_pos_embed_fn,
             chunk=chunk
@@ -221,19 +175,18 @@ class Network(nn.Module):
         return input_data.expand((total_elem, input_size))
 
 
-    def _apply_mlp_kernels(self, pos_flat, dir_flat, pos_embed_fn, pos_hash_fn, dir_sphar_fn, non_rigid_mlp_input, non_rigid_pos_embed_fn, chunk):
+    def _apply_mlp_kernels(self, pos_flat, dir_flat, pos_embed_fn, non_rigid_mlp_input, non_rigid_pos_embed_fn, chunk):
         raws = []
 
         # iterate ray samples by trunks
         for i in range(0, pos_flat.shape[0], chunk): # 307200
             start = i
             end = i + chunk
-            if end > pos_flat.shape[0]:
-                end = pos_flat.shape[0]
+            end = min(end, pos_flat.shape[0])
             total_elem = end - start
 
             xyz = pos_flat[start:end] # dj: [307200, 3] 3D coordinates 
-            dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
+            #dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
             ### -----------------------------------------
             if not cfg.network.ignore_non_rigid_motions:
                 non_rigid_embed_xyz = non_rigid_pos_embed_fn(xyz) # dj: [307200, 36] 36D positional embedding  
@@ -244,43 +197,28 @@ class Network(nn.Module):
                 )
                 xyz = result['xyz'] # dj: [307200, 3]
 
-            ### original cnl_mlp -------------------------
-            if not cfg.network.apply_hash_coding:
-                pos_embedded = pos_embed_fn(xyz) # dj: 3D xyz --> 63D pos_embedded
-                cnl_mlp_output = self.cnl_mlp(pos_embedded=pos_embedded, dir_embedded=None, hash_encode=cfg.network.apply_hash_coding)
-                raws += [cnl_mlp_output]
-            ### with hash encoded and tiny mlp -----------
-            else: 
-                #pos_embedded = pos_hash_fn(xyz) # dj: 3D xyz --> 32D pos_embedded
-                #dir_embedded = dir_sphar_fn(dir) # dj: 3D direction --> 16D dir_embedded
-                #cnl_mlp_output = self.cnl_mlp(pos_embedded=pos_embedded, dir_embedded=dir_embedded, hash_encode=cfg.network.apply_hash_coding)
-                
-                # !!! sigma can not converge
-                sigmas, pos_embedded = self.density(xyz, return_feat=True)
+            # sigma can not converge
+            sigmas, pos_embedded = self.density(xyz, return_feat=True)
 
-                # !!! dir can not converge
-                #dir = dir/torch.norm(dir, dim=1, keepdim=True)
-                #dir_embedded = self.dir_encoder(dir).cuda()
-                #dir_embedded = self.dir_encoder((dir+1)/2).cuda()
+            # dir can not converge
+            #dir = dir/torch.norm(dir, dim=1, keepdim=True)
+            #dir_embedded = self.dir_encoder(dir).cuda()
+            #dir_embedded = self.dir_encoder((dir+1)/2).cuda()
 
-                #rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
-                rgb_output = self.rgb_net(pos_embedded)
-                #cnl_mlp_output = torch.cat([rgb_output, sigmas.view(-1, 1)], 1)
-                cnl_mlp_output = rgb_output
-                
-                #if self.rgb_act == 'None': # rgbs is log-radiance
-                #    if kwargs.get('output_radiance', False): # output HDR map
-                #        rgbs = TruncExp.apply(rgbs)
-                #    else: # convert to LDR using tonemapper networks
-                #        rgbs = self.log_radiance_to_rgb(rgbs, **kwargs)
-                
-                raws += [cnl_mlp_output]
+            #rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
+            rgb_output = self.rgb_net(pos_embedded)
+            #cnl_mlp_output = torch.cat([rgb_output, sigmas.view(-1, 1)], 1)
+            cnl_mlp_output = rgb_output
 
+            #if self.rgb_act == 'None': # rgbs is log-radiance
+            #    if kwargs.get('output_radiance', False): # output HDR map
+            #        rgbs = TruncExp.apply(rgbs)
+            #    else: # convert to LDR using tonemapper networks
+            #        rgbs = self.log_radiance_to_rgb(rgbs, **kwargs)
 
-        output = {}
-        output['raws'] = torch.cat(raws, dim=0).to(cfg.primary_gpus[0])
+            raws += [cnl_mlp_output]
 
-        return output
+        return {'raws': torch.cat(raws, dim=0).to(cfg.primary_gpus[0])}
 
 
     def _batchify_rays(self, rays_flat, **kwargs):
@@ -292,8 +230,7 @@ class Network(nn.Module):
                     all_ret[k] = []
                 all_ret[k].append(ret[k])
 
-        all_ret = {k : torch.cat(all_ret[k], 0) for k in all_ret}
-        return all_ret
+        return {k : torch.cat(all_ret[k], 0) for k in all_ret}
 
 
     @staticmethod
@@ -330,14 +267,7 @@ class Network(nn.Module):
 
 
     @staticmethod
-    def _sample_motion_fields(
-            pts,
-            motion_scale_Rs, 
-            motion_Ts, 
-            motion_weights_vol,
-            cnl_bbox_min_xyz, 
-            cnl_bbox_scale_xyz,
-            output_list):
+    def _sample_motion_fields(pts, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, output_list):
         orig_shape = list(pts.shape)
         pts = pts.reshape(-1, 3) # [N_rays x N_samples, 3]
 
@@ -371,7 +301,6 @@ class Network(nn.Module):
             # querys = shift_pos.cpu().detach().numpy()
             # weights = interpn(points, values, querys, method='linear', bounds_error=False, fill_value=0).astype('float32')
             # weights = torch.tensor(weights.reshape(-1,1)).to(pos.device)
-   
             weights_list.append(weights) # per canonical pixel's bones weights
 
         backwarp_motion_weights = torch.cat(weights_list, dim=-1) # dj: [N_rays x N_samples, #bones]
@@ -402,7 +331,7 @@ class Network(nn.Module):
 
     @staticmethod
     def _unpack_ray_batch(ray_batch):
-        rays_o, rays_d = ray_batch[:,0:3], ray_batch[:, 3:6] 
+        rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6] 
         bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2]) 
         near, far = bounds[..., 0], bounds[..., 1] 
         return rays_o, rays_d, near, far
@@ -425,21 +354,7 @@ class Network(nn.Module):
         return z_vals
 
 
-    def _render_rays(
-            self, 
-            ray_batch, 
-            motion_scale_Rs,
-            motion_Ts,
-            motion_weights_vol,
-            cnl_bbox_min_xyz,
-            cnl_bbox_scale_xyz,
-            pos_embed_fn,
-            pos_hash_fn,
-            dir_sphar_fn,
-            non_rigid_pos_embed_fn,
-            non_rigid_mlp_input=None,
-            bgcolor=None,
-            **_):
+    def _render_rays(self, ray_batch, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, pos_embed_fn, non_rigid_pos_embed_fn, non_rigid_mlp_input=None, bgcolor=None, **_):
         
         N_rays = ray_batch.shape[0]
         rays_o, rays_d, near, far = self._unpack_ray_batch(ray_batch)
@@ -476,8 +391,6 @@ class Network(nn.Module):
             pos_dir=pts_dir,
             non_rigid_mlp_input=non_rigid_mlp_input,
             pos_embed_fn=pos_embed_fn,
-            pos_hash_fn=pos_hash_fn,
-            dir_sphar_fn=dir_sphar_fn,
             non_rigid_pos_embed_fn=non_rigid_pos_embed_fn
         )
         raw = query_result['raws']
@@ -536,8 +449,6 @@ class Network(nn.Module):
 
         kwargs.update({
             "pos_embed_fn": self.pos_embed_fn,
-            "pos_hash_fn": self.pos_hash_fn,
-            "dir_sphar_fn": self.dir_sphar_fn,
             "non_rigid_pos_embed_fn": non_rigid_pos_embed_fn,
             "non_rigid_mlp_input": non_rigid_mlp_input
         })
@@ -567,7 +478,7 @@ class Network(nn.Module):
         rays_d = torch.reshape(rays_d, [-1, 3]).float()
         packed_ray_infos = torch.cat([rays_o, rays_d, near, far], -1)
 
-        all_ret = self._batchify_rays(packed_ray_infos, **kwargs) # dj: includs the canonical mlp
+        all_ret = self._batchify_rays(packed_ray_infos, **kwargs)
 
         for k in all_ret:
             k_shape = list(rays_shape[:-1]) + list(all_ret[k].shape[1:])
@@ -576,7 +487,7 @@ class Network(nn.Module):
         return all_ret
 
     def density(self, x, return_feat=False):
-            """
+        """
             Inputs:
                 x: (N, 3) xyz in [-scale, scale]
                 return_feat: whether to return intermediate feature
@@ -584,12 +495,11 @@ class Network(nn.Module):
             Outputs:
                 sigmas: (N)
             """
-            x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
-            h = self.xyz_encoder(x)
-            sigmas = TruncExp.apply(h[:, 0])
-            if return_feat: 
-                return sigmas, h
-            return sigmas
+        x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
+        h = self.xyz_encoder(x)
+        sigmas = TruncExp.apply(h[:, 0])
+        
+        return (sigmas, h) if return_feat else sigmas
 
     def log_radiance_to_rgb(self, log_radiances, **kwargs):
         """
@@ -602,14 +512,10 @@ class Network(nn.Module):
         Outputs:
             rgbs: (N, 3)
         """
-        if 'exposure' in kwargs:
-            log_exposure = torch.log(kwargs['exposure'])
-        else: # unit exposure by default
-            log_exposure = 0
-
+        log_exposure = torch.log(kwargs['exposure']) if 'exposure' in kwargs else 0
         out = []
         for i in range(3):
             inp = log_radiances[:, i:i+1]+log_exposure
             out += [getattr(self, f'tonemapper_net_{i}')(inp)]
-        rgbs = torch.cat(out, 1)
-        return rgbs
+
+        return torch.cat(out, 1)

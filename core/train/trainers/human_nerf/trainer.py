@@ -301,8 +301,8 @@ class Trainer(object):
     def finalize(self):
         self.save_ckpt('latest')
 
-    ######################################################3
-    ## Progress
+    ######################################################
+    ### Progress
 
     def progress_begin(self):
         self.network.eval()
@@ -322,7 +322,6 @@ class Trainer(object):
         lpipsls = []
         is_empty_img = False
         for _, batch in enumerate(tqdm(self.prog_dataloader)):
-            # only access the first batch as we process one image one time
             for k, v in batch.items():
                 batch[k] = v[0]
 
