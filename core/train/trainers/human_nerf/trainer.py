@@ -301,8 +301,8 @@ class Trainer(object):
     def finalize(self):
         self.save_ckpt('latest')
 
-    ######################################################3
-    ## Progress
+    ######################################################
+    ### Progress
 
     def progress_begin(self):
         self.network.eval()
@@ -318,11 +318,10 @@ class Trainer(object):
         print('Evaluate Progress Images ...')
 
         images = []
-        lpipsls = [] # dj
+        psnrls = []
+        lpipsls = []
         is_empty_img = False
         for _, batch in enumerate(tqdm(self.prog_dataloader)):
-
-            # only access the first batch as we process one image one time
             for k, v in batch.items():
                 batch[k] = v[0]
 
@@ -330,7 +329,7 @@ class Trainer(object):
             height = batch['img_height']
             ray_mask = batch['ray_mask']
 
-            # cfg.bgcolor = [100,100,250] # dj
+            # cfg.bgcolor = [100, 100, 250] # dj
             rendered = np.full((height * width, 3), np.array(cfg.bgcolor)/255., dtype='float32')
             truth = np.full((height * width, 3), np.array(cfg.bgcolor)/255., dtype='float32')
             batch['iter_val'] = torch.full((1,), self.iter)
@@ -344,27 +343,30 @@ class Trainer(object):
             rendered[ray_mask] = rgb
             truth[ray_mask] = target_rgbs
 
-            # tag = mse2psnr_np(mse_np(rendered,truth))              # dj
-            truth = truth.reshape((height, width, -1))               # dj
-            rendered = rendered.reshape((height, width, -1))         # dj
-            tag = torch.mean(self.lpips(scale_for_lpips(torch.from_numpy(rendered).permute(2, 0, 1)), scale_for_lpips(torch.from_numpy(truth).permute(2, 0, 1))))*1000 # dj
-            lpipsls.append(tag.cpu().detach().numpy())               # dj
-            truth = to_8b_image(truth)                               # dj
-            rendered = to_8b_image(rendered)                         # dj
+            truth = truth.reshape((height, width, -1))               
+            rendered = rendered.reshape((height, width, -1))   
+
+            mse = mse_np(rendered, truth)
+            psnr_tag = mse2psnr_np(mse)
+            lpips_tag = torch.mean(self.lpips(scale_for_lpips(torch.from_numpy(rendered).permute(2, 0, 1)), scale_for_lpips(torch.from_numpy(truth).permute(2, 0, 1))))*1000
+
+            psnrls.append(psnr_tag)               
+            lpipsls.append(lpips_tag.cpu().detach().numpy())               
+            
+            truth = to_8b_image(truth)                               
+            rendered = to_8b_image(rendered)                         
+            
             images.append(np.concatenate([rendered, truth], axis=1))
 
-             # check if we create empty images (only at the begining of training)
+            # check if we create empty images (only at the begining of training)
             if self.iter <= 5000 and np.allclose(rendered, np.array(cfg.bgcolor), atol=5.):
-                is_empty_img = True # dj
-                break       # dj
-                rendered = np.full((height * width, 3), np.array(cfg.bgcolor)/255.,dtype='float32') # dj
-                rendered = to_8b_image(rendered.reshape((height, width, -1))) # dj
-            # images.append(np.concatenate([rendered, truth], axis=1)) # dj
+                is_empty_img = True
+                break       
+                
         
         tiled_image = tile_images(images)
-        # tiled_image = tile_images(images[12:13]) # dj
         
-        Image.fromarray(tiled_image).save(os.path.join(cfg.logdir, "iter[{:06}]_lpips[{:.2f}].jpg".format(self.iter,np.mean(lpipsls))))
+        Image.fromarray(tiled_image).save(os.path.join(cfg.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
 
         if is_empty_img:
             print("Produce empty images; reload the init model.")

@@ -1,4 +1,4 @@
-category: 'superhumannerf' # dj
+category: 'superhumannerf'
 
 
 ##############################################3
@@ -21,8 +21,6 @@ non_rigid_embedder:
 # canonical mlp
 canonical_mlp:
   module: 'core.nets.human_nerf.canonical_mlps.mlp_rgb_sigma'
-  mlp_depth: 8         # layers in network
-  mlp_width: 256       # channels per layer
   multires: 10         # log2 of max freq for positional encoding (3D location)
   i_embed: 0           # set 0 for default positional encoding, -1 for none
 

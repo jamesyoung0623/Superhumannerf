@@ -1,11 +1,9 @@
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19'  ######################
+experiment: 'single_gpu_hash_2_64_2048_2^19_test4'  ######################
 
 # canonical mlp
 canonical_mlp:
-  mlp_depth: 2            # layers in network
-  mlp_width: 64           # channels per layer
   cnl_pos_embed_size: 32  # canonical positional embedding size
 
 ##############################################
@@ -47,14 +45,9 @@ bgcolor: [0., 0., 0.]
 resize_img_scale: 0.5
 
 
-
- 
-
 ##############################################
 ## EXPERIMENTS CONFIGURATIONS
-## Overwrite default parameters (/superhumannerf/configs/default.yaml)
-
-resize_img_scale: 0.5       # try: 0.6; [0.5] ######################
+resize_img_scale: 0.5
 
 train_keyfilter: ['rays', 'motion_bases', 'motion_weights_priors', 'cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
 test_keyfilter: ['rays', 'target_rgbs', 'motion_bases', 'motion_weights_priors','cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
@@ -63,7 +56,7 @@ motionCLIP:
   encoded_feats: 'motionCLIP_token[s]_nbrs[1].pkl' # token: z/s(self); neighborhoods: #neighbors 
   training_frames_poseDistinct: False ######################
   training_frames_lossDistinct: False ######################
- 
+  
 total_bones: 24
 bbox_offset: 0.3  
 
