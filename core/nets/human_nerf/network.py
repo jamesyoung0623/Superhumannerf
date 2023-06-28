@@ -10,7 +10,6 @@ from datetime import datetime
 
 import tinycudann as tcnn
 import numpy as np
-from ngp_pl.models.custom_functions import TruncExp
 
 
 class Network(nn.Module):
@@ -189,19 +188,14 @@ class Network(nn.Module):
                 )
                 xyz = result['xyz'] # dj: [307200, 3]
 
-            _, pos_embedded = self.density(xyz, return_feat=True)
+            xyz = (xyz-self.xyz_min)/(self.xyz_max-self.xyz_min)
+            pos_embedded = self.xyz_encoder(xyz)
 
             dir = dir/torch.norm(dir, dim=1, keepdim=True)
             dir_embedded = self.dir_encoder((dir+1)/2).cuda()
 
             rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
             cnl_mlp_output = rgb_output
-
-            #if self.rgb_act == 'None': # rgbs is log-radiance
-            #    if kwargs.get('output_radiance', False): # output HDR map
-            #        rgbs = TruncExp.apply(rgbs)
-            #    else: # convert to LDR using tonemapper networks
-            #        rgbs = self.log_radiance_to_rgb(rgbs, **kwargs)
 
             raws += [cnl_mlp_output]
 
@@ -443,12 +437,10 @@ class Network(nn.Module):
         # dj: motion_weights_vol [25, 32, 32, 32] each bone-level (with BG) weights in volumn (x,y,z)
         motion_weights_vol = self.mweight_vol_decoder(motion_weights_priors=motion_weights_priors)
         motion_weights_vol = motion_weights_vol[0] # remove batch dimension motion_weights_vol [25, 32, 32, 32]
-
-        kwargs.update({
-            'motion_scale_Rs': motion_scale_Rs,
-            'motion_Ts': motion_Ts,
-            'motion_weights_vol': motion_weights_vol
-        })
+        
+        kwargs['motion_scale_Rs'] = motion_scale_Rs
+        kwargs['motion_Ts'] = motion_Ts
+        kwargs['motion_weights_vol'] = motion_weights_vol
 
 
         ### -----------------------------------------
@@ -466,37 +458,4 @@ class Network(nn.Module):
             all_ret[k] = torch.reshape(all_ret[k], k_shape)
 
         return all_ret
-
-    def density(self, x, return_feat=False):
-        """
-            Inputs:
-                x: (N, 3) xyz in [-scale, scale]
-                return_feat: whether to return intermediate feature
-
-            Outputs:
-                sigmas: (N)
-            """
-        x = (x-self.xyz_min)/(self.xyz_max-self.xyz_min)
-        h = self.xyz_encoder(x)
-        sigmas = TruncExp.apply(h[:, 0])
-        
-        return (sigmas, h) if return_feat else sigmas
-
-    def log_radiance_to_rgb(self, log_radiances, **kwargs):
-        """
-        Convert log-radiance to rgb as the setting in HDR-NeRF.
-        Called only when self.rgb_act == 'None' (with exposure)
-
-        Inputs:
-            log_radiances: (N, 3)
-
-        Outputs:
-            rgbs: (N, 3)
-        """
-        log_exposure = torch.log(kwargs['exposure']) if 'exposure' in kwargs else 0
-        out = []
-        for i in range(3):
-            inp = log_radiances[:, i:i+1]+log_exposure
-            out += [getattr(self, f'tonemapper_net_{i}')(inp)]
-
-        return torch.cat(out, 1)
+    
