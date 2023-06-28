@@ -7,55 +7,39 @@ import torch
 import torch.utils.data
 
 from core.utils.image_util import load_image
-from core.utils.body_util import \
-    body_pose_to_body_RTs, \
-    get_canonical_global_tfms, \
-    approx_gaussian_bone_volumes
+from core.utils.body_util import body_pose_to_body_RTs, get_canonical_global_tfms, approx_gaussian_bone_volumes
 from core.utils.file_util import list_files, split_path
-from core.utils.camera_util import \
-    apply_global_tfm_to_camera, \
-    get_rays_from_KRT, \
-    rays_intersect_3d_bbox
+from core.utils.camera_util import apply_global_tfm_to_camera, get_rays_from_KRT, rays_intersect_3d_bbox
 
 from configs import cfg
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(
-            self, 
-            dataset_path,
-            keyfilter=None,
-            maxframes=-1,
-            bgcolor=None,
-            ray_shoot_mode='image',
-            skip=1,
-            **_):
-         
+    def __init__(self, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
         print('[Dataset Path]', dataset_path) 
 
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
-        self.canonical_joints, self.canonical_bbox = \
-            self.load_canonical_joints()
+        self.canonical_joints, self.canonical_bbox = self.load_canonical_joints()
 
         if 'motion_weights_priors' in keyfilter:
-            self.motion_weights_priors = \
-                approx_gaussian_bone_volumes(
-                    self.canonical_joints,   
-                    self.canonical_bbox['min_xyz'],
-                    self.canonical_bbox['max_xyz'],
-                    grid_size=cfg.mweight_volume.volume_size).astype('float32')
+            self.motion_weights_priors = approx_gaussian_bone_volumes(
+                self.canonical_joints,   
+                self.canonical_bbox['min_xyz'],
+                self.canonical_bbox['max_xyz'],
+                grid_size=cfg.mweight_volume.volume_size
+            ).astype('float32')
 
 
         self.cameras = self.load_train_cameras()
         self.mesh_infos = self.load_train_mesh_infos()
         self.motionCLIP = self.load_train_motionCLIP() # dj
 
-        framelist = self.load_train_frames()
-        self.framelist = framelist[::skip]
+        frame_list = self.load_train_frames()
+        self.frame_list = frame_list[::skip]
         if maxframes > 0:
-            self.framelist = self.framelist[:maxframes]
+            self.frame_list = self.frame_list[:maxframes]
         print(f' -- Total Frames: {self.get_total_frames()}')
 
         self.keyfilter = keyfilter
@@ -114,14 +98,11 @@ class Dataset(torch.utils.data.Dataset):
     def query_dst_skeleton(self, frame_name):
         return {
             'poses': self.mesh_infos[frame_name]['poses'].astype('float32'),
-            'dst_tpose_joints': \
-                self.mesh_infos[frame_name]['tpose_joints'].astype('float32'),
+            'dst_tpose_joints': self.mesh_infos[frame_name]['tpose_joints'].astype('float32'),
             'bbox': self.mesh_infos[frame_name]['bbox'].copy(),
             'Rh': self.mesh_infos[frame_name]['Rh'].astype('float32'),
             'Th': self.mesh_infos[frame_name]['Th'].astype('float32')
         }
-    
-
 
     @staticmethod
     def select_rays(select_inds, rays_o, rays_d, ray_img, near, far):
@@ -132,14 +113,7 @@ class Dataset(torch.utils.data.Dataset):
         far = far[select_inds]
         return rays_o, rays_d, ray_img, near, far
     
-    def get_patch_ray_indices(
-            self, 
-            N_patch, 
-            ray_mask, 
-            subject_mask, 
-            bbox_mask,
-            patch_size, 
-            H, W):
+    def get_patch_ray_indices(self, N_patch, ray_mask, subject_mask, bbox_mask, patch_size, H, W):
 
         assert subject_mask.dtype == np.bool
         assert bbox_mask.dtype == np.bool
@@ -167,9 +141,7 @@ class Dataset(torch.utils.data.Dataset):
             else:
                 candidate_mask = bbox_exclude_subject_mask
 
-            ray_indices, mask, xy_min, xy_max = \
-                self._get_patch_ray_indices(ray_mask, candidate_mask, 
-                                            patch_size, H, W)
+            ray_indices, mask, xy_min, xy_max = self._get_patch_ray_indices(ray_mask, candidate_mask, patch_size, H, W)
 
             assert len(ray_indices.shape) == 1
             total_rays += len(ray_indices)
@@ -180,7 +152,7 @@ class Dataset(torch.utils.data.Dataset):
             list_xy_max.append(xy_max)
             
             patch_div_indices.append(total_rays)
-        # breakpoint()
+
         select_inds = np.concatenate(list_ray_indices, axis=0)
         patch_info = {
             'mask': np.stack(list_mask, axis=0),
@@ -192,12 +164,7 @@ class Dataset(torch.utils.data.Dataset):
         return select_inds, patch_info, patch_div_indices
 
 
-    def _get_patch_ray_indices(
-            self, 
-            ray_mask, 
-            candidate_mask, 
-            patch_size, 
-            H, W):
+    def _get_patch_ray_indices(self, ray_mask, candidate_mask, patch_size, H, W):
 
         assert len(ray_mask.shape) == 1
         assert ray_mask.dtype == np.bool
@@ -208,28 +175,22 @@ class Dataset(torch.utils.data.Dataset):
         # determine patch center
         ####################################
         # np.random.seed(cfg.train.seed) #######################
-        select_idx = np.random.choice(valid_ys.shape[0], 
-                                      size=[1], replace=False)[0]
+        select_idx = np.random.choice(valid_ys.shape[0], size=[1], replace=False)[0]
         center_x = valid_xs[select_idx]
         center_y = valid_ys[select_idx]
 
         # determine patch boundary
         half_patch_size = patch_size // 2
-        x_min = np.clip(a=center_x-half_patch_size, 
-                        a_min=0, 
-                        a_max=W-patch_size)
+        x_min = np.clip(a=center_x-half_patch_size, a_min=0, a_max=W-patch_size)
         x_max = x_min + patch_size
-        y_min = np.clip(a=center_y-half_patch_size,
-                        a_min=0,
-                        a_max=H-patch_size)
+        y_min = np.clip(a=center_y-half_patch_size, a_min=0, a_max=H-patch_size)
         y_max = y_min + patch_size
 
         sel_ray_mask = np.zeros_like(candidate_mask)
         sel_ray_mask[y_min:y_max, x_min:x_max] = True
 
         #####################################################
-        ## Below we determine the selected ray indices
-        ## and patch valid mask
+        ## Below we determine the selected ray indices and patch valid mask
 
         sel_ray_mask = sel_ray_mask.reshape(-1)
         inter_mask = np.bitwise_and(sel_ray_mask, ray_mask)
@@ -240,9 +201,7 @@ class Dataset(torch.utils.data.Dataset):
         
         inter_mask = inter_mask.reshape(H, W)
 
-        return select_inds, \
-                inter_mask[y_min:y_max, x_min:x_max], \
-                np.array([x_min, y_min]), np.array([x_max, y_max])
+        return select_inds, inter_mask[y_min:y_max, x_min:x_max], np.array([x_min, y_min]), np.array([x_max, y_max])
     
     def load_image(self, frame_name, bg_color):
         imagepath = os.path.join(self.image_dir, '{}.png'.format(frame_name))
@@ -260,36 +219,27 @@ class Dataset(torch.utils.data.Dataset):
         alpha_mask = alpha_mask / 255.
         img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
         if cfg.resize_img_scale != 1.:
-            img = cv2.resize(img, None, 
-                                fx=cfg.resize_img_scale,
-                                fy=cfg.resize_img_scale,
-                                interpolation=cv2.INTER_LANCZOS4)
-            alpha_mask = cv2.resize(alpha_mask, None, 
-                                    fx=cfg.resize_img_scale,
-                                    fy=cfg.resize_img_scale,
-                                    interpolation=cv2.INTER_LINEAR)
+            img = cv2.resize(img, None, fx=cfg.resize_img_scale, fy=cfg.resize_img_scale, interpolation=cv2.INTER_LANCZOS4)
+            alpha_mask = cv2.resize(alpha_mask, None, fx=cfg.resize_img_scale, fy=cfg.resize_img_scale, interpolation=cv2.INTER_LINEAR)
                                 
         return img, alpha_mask
 
 
     def get_total_frames(self):
-        return len(self.framelist)
+        return len(self.frame_list)
 
-    def sample_patch_rays(self, img, H, W,
-                          subject_mask, bbox_mask, ray_mask,
-                          rays_o, rays_d, ray_img, near, far):
+    def sample_patch_rays(self, img, H, W, subject_mask, bbox_mask, ray_mask, rays_o, rays_d, ray_img, near, far):
 
-        select_inds, patch_info, patch_div_indices = \
-            self.get_patch_ray_indices(
-                N_patch=cfg.patch.N_patches, 
-                ray_mask=ray_mask, 
-                subject_mask=subject_mask, 
-                bbox_mask=bbox_mask,
-                patch_size=cfg.patch.size, 
-                H=H, W=W)
+        select_inds, patch_info, patch_div_indices = self.get_patch_ray_indices(
+            N_patch=cfg.patch.N_patches, 
+            ray_mask=ray_mask, 
+            subject_mask=subject_mask, 
+            bbox_mask=bbox_mask,
+            patch_size=cfg.patch.size, 
+            H=H, W=W
+        )
 
-        rays_o, rays_d, ray_img, near, far = self.select_rays(
-            select_inds, rays_o, rays_d, ray_img, near, far)
+        rays_o, rays_d, ray_img, near, far = self.select_rays(select_inds, rays_o, rays_d, ray_img, near, far)
         
         targets = []
         for i in range(cfg.patch.N_patches):
@@ -300,17 +250,14 @@ class Dataset(torch.utils.data.Dataset):
 
         patch_masks = patch_info['mask']  # boolean array (N_patches, P, P)
 
-        return rays_o, rays_d, ray_img, near, far, \
-                target_patches, patch_masks, patch_div_indices
+        return rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices
 
     def __len__(self):
         return self.get_total_frames()
 
     def __getitem__(self, idx):
-        frame_name = self.framelist[idx]
-        results = {
-            'frame_name': frame_name
-        }
+        frame_name = self.frame_list[idx]
+        results = {'frame_name': frame_name}
         # print(frame_name)
 
         ################################################
@@ -323,9 +270,7 @@ class Dataset(torch.utils.data.Dataset):
         img, alpha = self.load_image(frame_name, bgcolor)
         img = (img / 255.).astype('float32')
 
-        H, W = img.shape[0:2]
-        # print(H,W)
-        # breakpoint()
+        H, W = img.shape[:2]
         dst_skel_info = self.query_dst_skeleton(frame_name)
         dst_bbox = dst_skel_info['bbox']
         dst_poses = dst_skel_info['poses']
@@ -336,16 +281,13 @@ class Dataset(torch.utils.data.Dataset):
         K[:2] *= cfg.resize_img_scale
 
         E = self.cameras[frame_name]['extrinsics']
-        E = apply_global_tfm_to_camera(
-                E=E, 
-                Rh=dst_skel_info['Rh'],
-                Th=dst_skel_info['Th'])
+        E = apply_global_tfm_to_camera(E=E, Rh=dst_skel_info['Rh'], Th=dst_skel_info['Th'])
         R = E[:3, :3]
         T = E[:3, 3]
-        
+
 
         rays_o, rays_d = get_rays_from_KRT(H, W, K, R, T)
-        ray_img = img.reshape(-1, 3) 
+        ray_img = img.reshape(-1, 3)
         rays_o = rays_o.reshape(-1, 3) # (H, W, 3) --> (N_rays, 3)
         rays_d = rays_d.reshape(-1, 3)
 
@@ -358,28 +300,26 @@ class Dataset(torch.utils.data.Dataset):
         near = near[:, None].astype('float32')
         far = far[:, None].astype('float32')
 
- 
         # print('^'*100)
         # print(rays_o.shape)
         if self.ray_shoot_mode == 'image':
             pass
         elif self.ray_shoot_mode == 'patch':
-            rays_o, rays_d, ray_img, near, far, \
-            target_patches, patch_masks, patch_div_indices = \
-                self.sample_patch_rays(img=img, H=H, W=W,
-                                       subject_mask=alpha[:, :, 0] > 0.,
-                                       bbox_mask=ray_mask.reshape(H, W),
-                                       ray_mask=ray_mask,
-                                       rays_o=rays_o, 
-                                       rays_d=rays_d, 
-                                       ray_img=ray_img, 
-                                       near=near, 
-                                       far=far)
+            rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices = self.sample_patch_rays(
+                img=img, H=H, W=W,
+                subject_mask=alpha[:, :, 0] > 0.,
+                bbox_mask=ray_mask.reshape(H, W),
+                ray_mask=ray_mask,
+                rays_o=rays_o, 
+                rays_d=rays_d, 
+                ray_img=ray_img, 
+                near=near, 
+                far=far
+            )
         else:
-            assert False, f"Ivalid Ray Shoot Mode: {self.ray_shoot_mode}"
-    
-        batch_rays = np.stack([rays_o, rays_d], axis=0) 
-        # unable to breakpoint()
+            assert False, f"Invalid Ray Shoot Mode: {self.ray_shoot_mode}"
+
+        batch_rays = np.stack([rays_o, rays_d], axis=0)
         # print('39408394089340943804837y84f0438')
         # print(batch_rays.shape)
         # # exit()
@@ -387,35 +327,29 @@ class Dataset(torch.utils.data.Dataset):
         # print(batch_rays[1,:6,:])
 
         if 'rays' in self.keyfilter:
-            results.update({
-                'img_width': W,
-                'img_height': H,
-                'ray_mask': ray_mask,
-                'rays': batch_rays,
-                'near': near,
-                'far': far,
-                'bgcolor': bgcolor})
+            results['img_width'] = W
+            results['img_height'] = H
+            results['ray_mask'] = ray_mask
+            results['rays'] = batch_rays
+            results['near'] = near
+            results['far'] = far
+            results['bgcolor'] = bgcolor
 
             if self.ray_shoot_mode == 'patch':
-                results.update({
-                    'patch_div_indices': patch_div_indices,
-                    'patch_masks': patch_masks,
-                    'target_patches': target_patches})
+                results['patch_div_indices'] = patch_div_indices
+                results['patch_masks'] = patch_masks
+                results['target_patches'] = target_patches
 
         if 'target_rgbs' in self.keyfilter:
             results['target_rgbs'] = ray_img
 
         if 'motion_bases' in self.keyfilter:
-            dst_Rs, dst_Ts = body_pose_to_body_RTs(
-                    dst_poses, dst_tpose_joints
-                )
-            cnl_gtfms = get_canonical_global_tfms(
-                            self.canonical_joints)
-            results.update({
-                'dst_Rs': dst_Rs,
-                'dst_Ts': dst_Ts,
-                'cnl_gtfms': cnl_gtfms
-            })
+            dst_Rs, dst_Ts = body_pose_to_body_RTs(dst_poses, dst_tpose_joints)
+            cnl_gtfms = get_canonical_global_tfms(self.canonical_joints)
+            
+            results['dst_Rs'] = dst_Rs
+            results['dst_Ts'] = dst_Ts
+            results['cnl_gtfms'] = cnl_gtfms
 
         if 'motion_weights_priors' in self.keyfilter:
             results['motion_weights_priors'] = self.motion_weights_priors.copy()
@@ -424,27 +358,22 @@ class Dataset(torch.utils.data.Dataset):
         if 'cnl_bbox' in self.keyfilter:
             min_xyz = self.canonical_bbox['min_xyz'].astype('float32')
             max_xyz = self.canonical_bbox['max_xyz'].astype('float32')
-            results.update({
-                'cnl_bbox_min_xyz': min_xyz,
-                'cnl_bbox_max_xyz': max_xyz,
-                'cnl_bbox_scale_xyz': 2.0 / (max_xyz - min_xyz)
-            })
+            results['cnl_bbox_min_xyz'] = min_xyz,
+            results['cnl_bbox_max_xyz'] = max_xyz
+            results['cnl_bbox_scale_xyz'] = 2.0 / (max_xyz - min_xyz)
             assert np.all(results['cnl_bbox_scale_xyz'] >= 0)
 
         if 'dst_posevec_69' in self.keyfilter:
             # 1. ignore global orientation
             # 2. add a small value to avoid all zeros
             dst_posevec_69 = dst_poses[3:] + 1e-2
-            results.update({
-                'dst_posevec': dst_posevec_69,
-            })
+            results['dst_posevec'] = dst_posevec_69
 
         # print(self.motionCLIP)
         if 'motionCLIP' in self.keyfilter:
-            # results['motionCLIP'] = self.motionCLIP  # dj
-            results.update({
-                'motionCLIP': self.motionCLIP,
-                'framelist': self.framelist,
-            })
+            # results['motionCLIP'] = self.motionCLIP
+            
+            results['motionCLIP'] = self.motionCLIP,
+            results['framelist'] = self.frame_list,
 
         return results

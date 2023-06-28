@@ -15,17 +15,15 @@ def cpu_data_to_gpu(cpu_data, exclude_keys=None):
 
         if isinstance(val, list):
             assert len(val) > 0
-            if not isinstance(val[0], str): # ignore string instance
+            if not isinstance(val[0], str):
                 gpu_data[key] = [x.cuda() for x in val]
         elif isinstance(val, dict):
             gpu_data[key] = {sub_k: sub_val.cuda() for sub_k, sub_val in val.items()}
         else:
             try:
                 gpu_data[key] = val.cuda()
-            except:
-                # print(key)
-                continue 
-                # breakpoint()
+            except Exception:
+                continue
     return gpu_data
 
 

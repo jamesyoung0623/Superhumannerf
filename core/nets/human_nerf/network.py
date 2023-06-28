@@ -75,8 +75,7 @@ class Network(nn.Module):
         # constants
         L = 16; F = 2; log2_T = 19; N_min = 16; 
         b = np.exp(np.log(2048*scale/N_min)/(L-1))
-        print(f'GridEncoding: Nmin={N_min} b={b:.5f} F={F} T=2^{log2_T} L={L}')
-
+        
         self.xyz_encoder = tcnn.NetworkWithInputEncoding(
             n_input_dims=3, n_output_dims=32,
             encoding_config={
@@ -92,7 +91,7 @@ class Network(nn.Module):
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
-                "output_activation": "None",
+                "output_activation": "ReLU",
                 "n_neurons": 64,
                 "n_hidden_layers": 1,
             }
@@ -107,7 +106,7 @@ class Network(nn.Module):
         )
 
         self.rgb_net = tcnn.Network(
-            n_input_dims=32, n_output_dims=4,
+            n_input_dims=48, n_output_dims=4,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
@@ -179,7 +178,7 @@ class Network(nn.Module):
             total_elem = end - start
 
             xyz = pos_flat[start:end] # dj: [307200, 3] 3D coordinates 
-            #dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
+            dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
             ### -----------------------------------------
             if not cfg.network.ignore_non_rigid_motions:
                 non_rigid_embed_xyz = non_rigid_pos_embed_fn(xyz) # dj: [307200, 36] 36D positional embedding  
@@ -190,17 +189,12 @@ class Network(nn.Module):
                 )
                 xyz = result['xyz'] # dj: [307200, 3]
 
-            # sigma can not converge
-            sigmas, pos_embedded = self.density(xyz, return_feat=True)
+            _, pos_embedded = self.density(xyz, return_feat=True)
 
-            # dir can not converge
-            #dir = dir/torch.norm(dir, dim=1, keepdim=True)
-            #dir_embedded = self.dir_encoder(dir).cuda()
-            #dir_embedded = self.dir_encoder((dir+1)/2).cuda()
+            dir = dir/torch.norm(dir, dim=1, keepdim=True)
+            dir_embedded = self.dir_encoder((dir+1)/2).cuda()
 
-            #rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
-            rgb_output = self.rgb_net(pos_embedded)
-            #cnl_mlp_output = torch.cat([rgb_output, sigmas.view(-1, 1)], 1)
+            rgb_output = self.rgb_net(torch.cat([dir_embedded, pos_embedded], 1))
             cnl_mlp_output = rgb_output
 
             #if self.rgb_act == 'None': # rgbs is log-radiance
@@ -231,6 +225,7 @@ class Network(nn.Module):
         def _raw2alpha(raw, dists, act_fn=F.relu):
             return 1.0 - torch.exp(-act_fn(raw)*dists)
             # return 1.0 - torch.exp(-raw*dists)
+            
         # raw: [N_rays, N_samples, 4]
         # raw_mask : [N_rays, N_samples, 1]
         # z_vals : [N_rays, N_samples]
@@ -242,9 +237,14 @@ class Network(nn.Module):
         dists = torch.cat([dists, infinity_dists], dim=-1) 
         dists = dists * torch.norm(rays_d[...,None,:], dim=-1)                 # [N_rays, N_samples]
 
-        rgb = torch.sigmoid(raw[..., :3])                                       # [N_rays, N_samples, 3]
-
-        # F.relu(raw[...,3]) * dists
+        # [N_rays, N_samples, 3]
+        rgb = torch.sigmoid(raw[..., :3])
+        #rgb = F.relu(raw[..., :3])                                             
+        #rgb = raw[..., :3]                                             
+        
+        # [N_rays, N_samples]
+        alpha = 1.0 - torch.exp(-F.relu(raw[..., 3])*dists)
+        #alpha = 1.0 - torch.exp(-raw[..., 3]*dists)
 
         alpha = _raw2alpha(raw[..., 3], dists)                                  # [N_rays, N_samples]
         alpha = alpha * raw_mask[:, :, 0]                                      # [N_rays, N_samples]
@@ -269,31 +269,22 @@ class Network(nn.Module):
 
         # motion_scale_Rs [24,3,3]; motion_Ts [24,3]
         # cnl_bbox_min_xyz [3]; cnl_bbox_scale_xyz [3]
-        weights_list = [] # dj: lenth: #bones, each sample's bones weights
-        pos_list = [] ############################ 
+        weights_list = []
+        pos_list = []
         # dj: mapping from observation space to canonical space in bone-wise 
-        # from scipy.interpolate import interpn
-        # from scipy.interpolate import RegularGridInterpolator
-        # import numpy as np
         
         for i in range(motion_weights.size(0)):
-            pos = torch.matmul(motion_scale_Rs[i, :, :], pts.T).T + motion_Ts[i, :] # dj: pos in cananical space
-            pos_list.append(pos) ############################
+            pos = torch.matmul(motion_scale_Rs[i, :, :], pts.T).T + motion_Ts[i, :] # dj: pos in canonical space
+            pos_list.append(pos)
             pos = (pos - cnl_bbox_min_xyz[None, :]) * cnl_bbox_scale_xyz[None, :] - 1.0 
             
-            # print(motion_weights[2,30,:])
-            # print(pos[40:50,:])
-            # weights = F.grid_sample(input=motion_weights[None, i:i+1, :, :, :], grid=pos[None, None, None, :, :], padding_mode='zeros', align_corners=True)
-            weights = F.grid_sample(input=motion_weights[None, i:i+1, :, :, :], grid=pos[None, None, None, :, :], mode='bilinear', padding_mode='zeros', align_corners=True)
-            # weights = torch.zeros(1,1,1,1,pos.shape[0]).to(pos.device) ########
+            motion_weight = motion_weights[i].unsqueeze(0).unsqueeze(0)
+            pos = pos.unsqueeze(0).unsqueeze(0)
+            
+            weights = F.grid_sample(input=motion_weight, grid=pos, mode='bilinear', padding_mode='zeros', align_corners=True)
             weights = weights[0, 0, 0, 0, :, None] # [1, 1, 1, 1, 307200] to [307200,1]
 
-            # points = (np.linspace(0, 31, 32), np.linspace(0, 31, 32), np.linspace(0, 31, 32))
-            # values = motion_weights[i, :].cpu().detach().numpy()
-            # shift_pos = (pos + 1.0)*16
-            # querys = shift_pos.cpu().detach().numpy()
-            # weights = interpn(points, values, querys, method='linear', bounds_error=False, fill_value=0).astype('float32')
-            # weights = torch.tensor(weights.reshape(-1,1)).to(pos.device)
+
             weights_list.append(weights) # per canonical pixel's bones weights
 
         backwarp_motion_weights = torch.cat(weights_list, dim=-1) # dj: [N_rays x N_samples, #bones]
@@ -302,8 +293,7 @@ class Network(nn.Module):
 
         weighted_motion_fields = []
         for i in range(total_bases):
-            # pos = torch.matmul(motion_scale_Rs[i, :, :], pts.T).T + motion_Ts[i, :] # dj: pos in cananical space ##################################
-            pos = pos_list[i] ##################################
+            pos = pos_list[i]
             weighted_pos = backwarp_motion_weights[:, i:i+1] * pos
             weighted_motion_fields.append(weighted_pos)
         x_skel = torch.sum(torch.stack(weighted_motion_fields, dim=0), dim=0) / backwarp_motion_weights_sum.clamp(min=0.0001) # dj: [N_rays x N_samples, 3]
@@ -374,7 +364,7 @@ class Network(nn.Module):
         
         # cnl_pts: [2400, 128, 3] (N_rays, N_samples, xyz)
         # distortion loss: normalized distances s, normalized weights w 
-        # distloss = self._distortation_loss(cnl_pts,)
+        # distloss = self._distortion_loss(cnl_pts,)
 
         pts_dir = rays_d[..., None, :] * torch.ones_like(z_vals[..., :, None]) # dj: pts' direction (humannerf does not use such info)
         # cnl_pts.shape [2400, 128, 3]; non_rigid_mlp_input [1,69]
@@ -405,27 +395,27 @@ class Network(nn.Module):
 
     
     def forward(self, rays, dst_Rs, dst_Ts, cnl_gtfms, motion_weights_priors, motionCLIP, dst_posevec=None, near=None, far=None, iter_val=1e7, **kwargs):
-        dst_Rs=dst_Rs[None, ...] # [1, 24, 3, 3]
-        dst_Ts=dst_Ts[None, ...] # [1, 24, 3]
-        dst_posevec=dst_posevec[None, ...] # [1, 69]
-        cnl_gtfms=cnl_gtfms[None, ...]
-        motion_weights_priors=motion_weights_priors[None, ...]
+        # rays: (2, 2400, 3)
+        dst_Rs = dst_Rs[None, ...] # [1, 24, 3, 3]
+        dst_Ts = dst_Ts[None, ...] # [1, 24, 3]
+        dst_posevec = dst_posevec[None, ...] # [1, 69]
+        cnl_gtfms = cnl_gtfms[None, ...]
+        motion_weights_priors = motion_weights_priors[None, ...]
         #motionCLIP=motionCLIP[None, ...] # dj [540, 512]
 
         # correct body pose
         ### -----------------------------------------
-        if not cfg.network.ignore_pose_correction: # dj
-            if iter_val >= cfg.pose_decoder.get('kick_in_iter', 0):
-                pose_out = self.pose_decoder(dst_posevec) # [1, 23, 3, 3] axis-angle (3) to rotation matrix (3,3)
-                delta_Rs = pose_out['Rs'] # [1, 23, 3, 3]
-                delta_Ts = pose_out.get('Ts', None)
-                
-                dst_Rs_no_root = dst_Rs[:, 1:, ...]
-                dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root,delta_Rs)
-                dst_Rs = torch.cat([dst_Rs[:, 0:1, ...], dst_Rs_no_root], dim=1)
-
-                if delta_Ts is not None:
-                    dst_Ts = dst_Ts + delta_Ts
+        if not cfg.network.ignore_pose_correction and iter_val >= cfg.pose_decoder.get('kick_in_iter', 0):
+            pose_out = self.pose_decoder(dst_posevec) # [1, 23, 3, 3] axis-angle (3) to rotation matrix (3,3)
+            delta_Rs = pose_out['Rs'] # [1, 23, 3, 3]
+            delta_Ts = pose_out.get('Ts', None)
+            
+            dst_Rs_no_root = dst_Rs[:, 1:, ...]
+            dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root,delta_Rs)
+            dst_Rs = torch.cat([dst_Rs[:, 0:1, ...], dst_Rs_no_root], dim=1)
+        
+            if delta_Ts is not None:
+                dst_Ts = dst_Ts + delta_Ts
 
         # prepare non-rigid motion needed embedding
         ### -----------------------------------------

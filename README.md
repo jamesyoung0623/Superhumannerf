@@ -1,8 +1,6 @@
-# HumanNeRF: Free-viewpoint Rendering of Moving People from Monocular Video (CVPR 2022)
+# Superhumannerf
 
-[Project Page](https://grail.cs.washington.edu/projects/humannerf/) | [Paper](https://arxiv.org/abs/2201.04127) | [Video](https://youtu.be/GM-RoZEymmw)
-
-This is an official implementation. The codebase is implemented using [PyTorch](https://pytorch.org/) and tested on [Ubuntu](https://ubuntu.com/) 20.04.4 LTS.
+The codebase is implemented using [PyTorch](https://pytorch.org/) and tested on [Ubuntu](https://ubuntu.com/) 20.04.4 LTS.
 
 ## Prerequisite
 

@@ -7,7 +7,6 @@ from core.train import create_trainer, create_optimizer
 
 from datetime import datetime
 
-# dj: for make_deterministic
 import os
 import random
 import numpy as np
@@ -15,7 +14,7 @@ import torch
 import torch.cuda
 import torch.backends.cudnn
 
-# dj
+
 def make_deterministic(seed):
     '''Seed everything for better reproducibility.
     (some pytorch operation is non-deterministic like the backprop of grid_samples)
@@ -42,10 +41,8 @@ def make_deterministic(seed):
 def main():
     log = Logger()
     log.print_config()
-
     print('fixed random seed: %d' % cfg.train.seed)
     make_deterministic(cfg.train.seed)
-
     model = create_network()
     optimizer = create_optimizer(model)
     trainer = create_trainer(model, optimizer)
@@ -54,10 +51,7 @@ def main():
     # estimate start epoch
     tic = datetime.now()
     epoch = trainer.iter // len(train_loader) + 1
-    while True:
-        if trainer.iter > cfg.train.maxiter:
-            break
-        
+    while not trainer.iter > cfg.train.maxiter:
         trainer.train(epoch=epoch, train_dataloader=train_loader)
         epoch += 1
 
