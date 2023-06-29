@@ -10,12 +10,21 @@ Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) (recommended
 
 Create and activate a virtual environment.
 
-    conda create --name humannerf python=3.7
-    conda activate humannerf
+    conda create --name superhumannerf python=3.8
+    conda activate superhumannerf
+
+Install pytorch with cuda11.6
+
+    pip install torch==1.12.1+cu116 torchvision==0.13.1+cu116 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu116
 
 Install the required packages.
 
     pip install -r requirements.txt
+
+Install tinycudann
+
+    pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+
 
 ### `Download SMPL model`
 

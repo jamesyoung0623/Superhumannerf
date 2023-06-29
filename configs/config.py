@@ -42,8 +42,7 @@ def determine_primary_secondary_gpus(cfg):
         all_gpus = list(range(cfg.n_gpus))
         cfg.primary_gpus = [0]
         if cfg.n_gpus > 1:
-            cfg.secondary_gpus = [g for g in all_gpus \
-                                    if g not in cfg.primary_gpus]
+            cfg.secondary_gpus = [g for g in all_gpus if g not in cfg.primary_gpus]
         else:
             cfg.secondary_gpus = cfg.primary_gpus
 

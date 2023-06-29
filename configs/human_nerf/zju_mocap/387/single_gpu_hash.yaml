@@ -1,6 +1,6 @@
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_test3'
+experiment: 'test'
 
 ##############################################
 ## Data Configuration

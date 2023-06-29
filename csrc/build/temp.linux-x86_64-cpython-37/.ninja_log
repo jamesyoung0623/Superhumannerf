@@ -1,6 +1,0 @@
-# ninja log v5
-0	28462	1686882635074012791	/home/jamesyoung0623/superhumannerf/ngp_pl/models/csrc/build/temp.linux-x86_64-cpython-37/binding.o	212dfd554f859fa4
-0	55588	1686882662209929911	/home/jamesyoung0623/superhumannerf/ngp_pl/models/csrc/build/temp.linux-x86_64-cpython-37/intersection.o	b6ac6b8343c86a62
-0	56022	1686882662645928584	/home/jamesyoung0623/superhumannerf/ngp_pl/models/csrc/build/temp.linux-x86_64-cpython-37/raymarching.o	311b3f6cc57ff2d6
-0	57462	1686882664081924212	/home/jamesyoung0623/superhumannerf/ngp_pl/models/csrc/build/temp.linux-x86_64-cpython-37/volumerendering.o	8336f84d80673a18
-0	62129	1686882668749910007	/home/jamesyoung0623/superhumannerf/ngp_pl/models/csrc/build/temp.linux-x86_64-cpython-37/losses.o	8d9424ed55338a15
