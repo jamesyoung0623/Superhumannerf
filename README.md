@@ -21,6 +21,11 @@ Install the required packages.
 
     pip install -r requirements.txt
 
+Make sure cuda version is right
+
+    export LD_LIBRARY_PATH=/usr/local/cuda-11.6/lib64:$LD_LIBRARY_PATH
+    export PATH=/usr/local/cuda-11.6/bin:$PATH
+
 Install tinycudann
 
     pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch

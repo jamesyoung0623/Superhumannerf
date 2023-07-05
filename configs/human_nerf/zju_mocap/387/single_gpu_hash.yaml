@@ -1,6 +1,6 @@
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'test'
+experiment: 'test3'
 
 ##############################################
 ## Data Configuration
@@ -18,7 +18,7 @@ train:
   lrate_decay: 100
   optimizer: 'adam'
   ray_shoot_mode: 'patch'
-  maxiter: 400000           
+  maxiter: 200000           
   log_interval: 10          
   seed: 0                   
   lossweights:
@@ -27,7 +27,8 @@ train:
     opacity: 1.0             
     l1: 0.2                 
     psnr: 0.0   
-  opacity_kick_in_iter: 10000            
+  opacity_kick_in_iter: 20000           
+  psnr_kick_in_iter: 100000            
 
 progress:
   dataset_module: 'core.data.human_nerf.train'
@@ -35,7 +36,8 @@ progress:
   batch_size: 1
   shuffle: False
   drop_last: False
-  dump_interval: 10000       
+  progress_interval: 1000      
+  eval_interval: 10000      
 
 movement:
   dataset_module: 'core.data.human_nerf.train'
@@ -63,12 +65,23 @@ bgcolor: [0., 0., 0.]
 
 ##############################################
 ## EXPERIMENTS CONFIGURATIONS
-## Overwrite default parameters (/superhumannerf/configs/default.yaml)
 
 resize_img_scale: 0.5       # try: 0.6; [0.5] 
 
-train_keyfilter: ['rays', 'motion_bases', 'motion_weights_priors', 'cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
-test_keyfilter: ['rays', 'target_rgbs', 'motion_bases', 'motion_weights_priors','cnl_bbox', 'dst_posevec_69', 'motionCLIP'] # add 'motionCLIP'
+train_keyfilter: ['rays', 'motion_bases', 'motion_weights_priors', 'cnl_bbox', 'dst_posevec_69', 'motionCLIP']
+test_keyfilter: ['rays', 'target_rgbs', 'motion_bases', 'motion_weights_priors','cnl_bbox', 'dst_posevec_69', 'motionCLIP']
+
+# non-rigid motion mlp
+non_rigid_motion_mlp:
+  kick_in_iter: 10000
+  full_band_iter: 50000
+
+pose_decoder:
+  module: 'core.nets.human_nerf.pose_decoders.mlp_delta_body_pose'
+  embedding_size: 69
+  mlp_width: 256
+  mlp_depth: 4
+  kick_in_iter: 0
 
 motionCLIP:
   encoded_feats: 'motionCLIP_token[s]_nbrs[1].pkl' # token: z/s(self); neighborhoods: #neighbors 
@@ -79,14 +92,14 @@ sex: 'neutral'
 total_bones: 24
 bbox_offset: 0.3  
 
-resume: False
+resume: True
 load_net: latest
 save_all: True
 
 patch:
   sample_subject_ratio: 0.8 # [0.8] 
-  N_patches: 6              # try: 10; [6]
-  size: 20                  # try: 16; single_gpu [20]; adventure[32]
+  N_patches: 6             
+  size: 20         
 
 network:
   ignore_pose_correction: False

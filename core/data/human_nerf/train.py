@@ -34,7 +34,7 @@ class Dataset(torch.utils.data.Dataset):
 
         self.cameras = self.load_train_cameras()
         self.mesh_infos = self.load_train_mesh_infos()
-        self.motionCLIP = self.load_train_motionCLIP() # dj
+        self.motionCLIP = self.load_train_motionCLIP()
 
         frame_list = self.load_train_frames()
         self.frame_list = frame_list[::skip]
@@ -60,14 +60,12 @@ class Dataset(torch.utils.data.Dataset):
         cameras = None
         with open(os.path.join(self.dataset_path, 'cameras.pkl'), 'rb') as f: 
             cameras = pickle.load(f)
-        # print(cameras)    
         return cameras
 
-    def load_train_motionCLIP(self): # dj
+    def load_train_motionCLIP(self):
         motionCLIP = None
         with open(os.path.join(self.dataset_path, cfg.motionCLIP.encoded_feats), 'rb') as f: 
             motionCLIP = pickle.load(f) 
-        # print(motionCLIP.cpu().detach().numpy().shape)
         return motionCLIP.cpu().detach().numpy()
     
     @staticmethod
@@ -75,10 +73,7 @@ class Dataset(torch.utils.data.Dataset):
         min_xyz = np.min(skeleton, axis=0) - cfg.bbox_offset
         max_xyz = np.max(skeleton, axis=0) + cfg.bbox_offset
 
-        return {
-            'min_xyz': min_xyz,
-            'max_xyz': max_xyz
-        }
+        return {'min_xyz': min_xyz, 'max_xyz': max_xyz}
 
     def load_train_mesh_infos(self):
         mesh_infos = None
@@ -114,7 +109,6 @@ class Dataset(torch.utils.data.Dataset):
         return rays_o, rays_d, ray_img, near, far
     
     def get_patch_ray_indices(self, N_patch, ray_mask, subject_mask, bbox_mask, patch_size, H, W):
-
         assert subject_mask.dtype == np.bool
         assert bbox_mask.dtype == np.bool
 
@@ -134,7 +128,6 @@ class Dataset(torch.utils.data.Dataset):
             # let p = cfg.patch.sample_subject_ratio
             # prob p: we sample on subject area
             # prob (1-p): we sample on non-subject area but still in bbox
-            # print(np.random.rand(1)[0])
             # np.random.seed(cfg.train.seed) #######################
             if np.random.rand(1)[0] < cfg.patch.sample_subject_ratio:
                 candidate_mask = subject_mask
@@ -242,10 +235,12 @@ class Dataset(torch.utils.data.Dataset):
         rays_o, rays_d, ray_img, near, far = self.select_rays(select_inds, rays_o, rays_d, ray_img, near, far)
         
         targets = []
+        
         for i in range(cfg.patch.N_patches):
             x_min, y_min = patch_info['xy_min'][i] 
             x_max, y_max = patch_info['xy_max'][i]
             targets.append(img[y_min:y_max, x_min:x_max])
+        
         target_patches = np.stack(targets, axis=0) # (N_patches, P, P, 3)
 
         patch_masks = patch_info['mask']  # boolean array (N_patches, P, P)
@@ -258,8 +253,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         frame_name = self.frame_list[idx]
         results = {'frame_name': frame_name}
-        # print(frame_name)
-
+        
         ################################################
         if self.bgcolor is None:
             # np.random.seed(cfg.train.seed) #######################
@@ -269,13 +263,14 @@ class Dataset(torch.utils.data.Dataset):
 
         img, alpha = self.load_image(frame_name, bgcolor)
         img = (img / 255.).astype('float32')
-
+        
         H, W = img.shape[:2]
+        
         dst_skel_info = self.query_dst_skeleton(frame_name)
         dst_bbox = dst_skel_info['bbox']
         dst_poses = dst_skel_info['poses']
         dst_tpose_joints = dst_skel_info['dst_tpose_joints']
-
+        
         assert frame_name in self.cameras
         K = self.cameras[frame_name]['intrinsics'][:3, :3].copy()
         K[:2] *= cfg.resize_img_scale
@@ -300,8 +295,6 @@ class Dataset(torch.utils.data.Dataset):
         near = near[:, None].astype('float32')
         far = far[:, None].astype('float32')
 
-        # print('^'*100)
-        # print(rays_o.shape)
         if self.ray_shoot_mode == 'image':
             pass
         elif self.ray_shoot_mode == 'patch':
@@ -320,12 +313,8 @@ class Dataset(torch.utils.data.Dataset):
             assert False, f"Invalid Ray Shoot Mode: {self.ray_shoot_mode}"
 
         batch_rays = np.stack([rays_o, rays_d], axis=0)
-        # print('39408394089340943804837y84f0438')
-        # print(batch_rays.shape)
-        # # exit()
-        # print(batch_rays[0,:6,:])
-        # print(batch_rays[1,:6,:])
 
+        
         if 'rays' in self.keyfilter:
             results['img_width'] = W
             results['img_height'] = H
@@ -369,7 +358,6 @@ class Dataset(torch.utils.data.Dataset):
             dst_posevec_69 = dst_poses[3:] + 1e-2
             results['dst_posevec'] = dst_posevec_69
 
-        # print(self.motionCLIP)
         if 'motionCLIP' in self.keyfilter:
             # results['motionCLIP'] = self.motionCLIP
             

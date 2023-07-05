@@ -4,14 +4,11 @@ from core.utils.network_util import initseq, RodriguesModule
 
 from configs import cfg
 
+import tinycudann as tcnn
+
 class BodyPoseRefiner(nn.Module):
-    def __init__(self,
-                 embedding_size=69,
-                 mlp_width=256,
-                 mlp_depth=4,
-                 **_):
+    def __init__(self, embedding_size=69, mlp_width=256, mlp_depth=4, **_):
         super(BodyPoseRefiner, self).__init__()
-        # breakpoint()
         # embedding_size: 69; mlp_width: 256; mlp_depth: 4
         block_mlps = [nn.Linear(embedding_size, mlp_width), nn.ReLU()]
         
@@ -32,12 +29,10 @@ class BodyPoseRefiner(nn.Module):
         last_layer.bias.data.zero_()
 
         self.rodriguez = RodriguesModule()
-
+    
+        
     def forward(self, pose_input):
-        # breakpoint()
         rvec = self.block_mlps(pose_input).view(-1, 3)
         Rs = self.rodriguez(rvec).view(-1, self.total_bones, 3, 3)
         
-        return {
-            "Rs": Rs
-        }
+        return {"Rs": Rs}

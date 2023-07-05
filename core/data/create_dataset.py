@@ -56,6 +56,7 @@ def create_dataloader(data_type='train'):
     dataset = create_dataset(data_type=data_type)
     g = torch.Generator()
     g.manual_seed(0)
+    
     data_loader = torch.utils.data.DataLoader(
         dataset=dataset,
         batch_size=batch_size,

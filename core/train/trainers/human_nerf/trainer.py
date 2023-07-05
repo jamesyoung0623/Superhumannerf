@@ -68,8 +68,7 @@ def scale_for_lpips(image_tensor):
 class Trainer(object):
     def __init__(self, network, optimizer):
         print('\n********** Init Trainer ***********')
-        network = network.cuda().deploy_mlps_to_secondary_gpus()
-        self.network = network
+        self.network = network.cuda()
 
         self.optimizer = optimizer
         self.update_lr = create_lr_updater()
@@ -179,6 +178,9 @@ class Trainer(object):
 
         if self.iter < cfg.train.opacity_kick_in_iter:
             losses['opacity'] *= 0.0
+            
+        if self.iter < cfg.train.psnr_kick_in_iter:
+            losses['psnr'] *= 0.0
         
         train_losses = [ weight * losses[k] for k, weight in lossweights.items() ]
         ori_losses = [ loss for _, loss in losses.items() ]
@@ -275,7 +277,7 @@ class Trainer(object):
                 )
                 print(log_str)
 
-            if self.iter % cfg.progress.dump_interval == 0:
+            if self.iter % cfg.progress.progress_interval == 0:
                 self.progress()
                 self.save_ckpt(f'iter_{self.iter}')
                     
@@ -354,7 +356,9 @@ class Trainer(object):
         
         Image.fromarray(tiled_image).save(os.path.join(cfg.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
 
-        self.eval_model(render_folder_name='eval', n=self.iter/cfg.progress.dump_interval-1)
+        if self.iter % cfg.progress.eval_interval == 0:
+            self.eval_model(render_folder_name='eval', n=self.iter/cfg.progress.eval_interval)
+        
         self.progress_end()
         return
 
@@ -391,7 +395,7 @@ class Trainer(object):
         ckpt = torch.load(ckpt_path, map_location='cuda:0')
         model.load_state_dict(ckpt['network'], strict=False)
         print('load network from ', ckpt_path)
-        return model.cuda().deploy_mlps_to_secondary_gpus()
+        return model.cuda()
 
     def unpack_alpha_map(self, alpha_vals, ray_mask, width, height):
         alpha_map = np.zeros((height * width), dtype='float32')
@@ -492,4 +496,3 @@ class Trainer(object):
         self.swriter.add_scalar('AllCP_PSNR', psnr_mean, n)
         self.swriter.add_scalar('AllCP_SSIM', ssim_mean, n)
         self.swriter.add_scalar('AllCP_LPIPS', lpips_mean*1000, n)
-
