@@ -220,10 +220,6 @@ class Network(nn.Module):
 
     @staticmethod
     def _raw2outputs(raw, raw_mask, z_vals, rays_d, bgcolor=None):
-        def _raw2alpha(raw, dists, act_fn=F.relu):
-            return 1.0 - torch.exp(-act_fn(raw)*dists)
-            # return 1.0 - torch.exp(-raw*dists)
-            
         # raw: [N_rays, N_samples, 4]
         # raw_mask : [N_rays, N_samples, 1]
         # z_vals : [N_rays, N_samples]
@@ -231,23 +227,18 @@ class Network(nn.Module):
         dists = z_vals[..., 1:] - z_vals[..., :-1]
 
         infinity_dists = torch.Tensor([1e10])
-        infinity_dists = infinity_dists.expand(dists[...,:1].shape).to(dists)
+        infinity_dists = infinity_dists.expand(dists[..., :1].shape).to(dists)
         dists = torch.cat([dists, infinity_dists], dim=-1) 
-        dists = dists * torch.norm(rays_d[...,None,:], dim=-1)                 # [N_rays, N_samples]
+        dists = dists * torch.norm(rays_d[..., None, :], dim=-1)                 # [N_rays, N_samples]
 
         # [N_rays, N_samples, 3]
         rgb = torch.sigmoid(raw[..., :3])
-        #rgb = F.relu(raw[..., :3])                                             
-        #rgb = raw[..., :3]                                             
-        
         # [N_rays, N_samples]
         alpha = 1.0 - torch.exp(-F.relu(raw[..., 3])*dists)
-        #alpha = 1.0 - torch.exp(-raw[..., 3]*dists)
 
-        alpha = _raw2alpha(raw[..., 3], dists)                                  # [N_rays, N_samples]
         alpha = alpha * raw_mask[:, :, 0]                                      # [N_rays, N_samples]
         weights = alpha * torch.cumprod( torch.cat([torch.ones((alpha.shape[0], 1)).to(alpha), 1.-alpha + 1e-10], dim=-1), dim=-1)[:, :-1]
-        rgb_map = torch.sum(weights[...,None] * rgb, -2)                       # [N_rays, 3]
+        rgb_map = torch.sum(weights[..., None] * rgb, -2)                       # [N_rays, 3]
 
         depth_map = torch.sum(weights * z_vals, -1)                            # [N_rays]
         acc_map = torch.sum(weights, -1)                                       # [N_rays]
@@ -263,9 +254,9 @@ class Network(nn.Module):
         pts = pts.reshape(-1, 3) # [N_rays x N_samples, 3]
 
         # remove BG channel
-        motion_weights = motion_weights_vol[:-1] # [24,32,32,32]
+        motion_weights = motion_weights_vol[:-1] # [24, 32, 32, 32]
 
-        # motion_scale_Rs [24,3,3]; motion_Ts [24,3]
+        # motion_scale_Rs [24, 3, 3]; motion_Ts [24, 3]
         # cnl_bbox_min_xyz [3]; cnl_bbox_scale_xyz [3]
         weights_list = []
         pos_list = []
