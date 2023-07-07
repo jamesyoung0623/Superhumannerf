@@ -1,8 +1,10 @@
 category: 'superhumannerf'
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_10_100000_N_patches_6_size_20_non_rigid_5_128_test1'
-
+experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
+logdir: '../experiments/superhumannerf/zju_mocap/p387/single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
+primary_gpus: [0]
+secondary_gpus: [1, 2, 3]
 ##############################################3
 ## Network Specs
 
@@ -63,7 +65,7 @@ train:
   lossweights:
     lpips: 1.0
     mse: 0.2
-    opacity: 10.0             
+    opacity: 1.0             
     l1: 0.2                 
     psnr: 0.0   
   opacity_kick_in_iter: 100000           
@@ -120,17 +122,12 @@ save_all: True
 
 patch:
   sample_subject_ratio: 0.8 # [0.8] 
-  N_patches: 6            
+  N_patches: 6             
   size: 20         
 
 network:
-<<<<<<< HEAD
-  ignore_pose_correction: True
-  ignore_non_rigid_motions: True
-=======
   ignore_pose_correction: False
   ignore_non_rigid_motions: False
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
   apply_hash_coding: True
 
 netchunk_per_gpu: 308000 # dj: [307200=2400*128] number of pts sent through network in parallel, decrease if running out of memory
