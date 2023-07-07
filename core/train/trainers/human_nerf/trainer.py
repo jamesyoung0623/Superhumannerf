@@ -98,6 +98,7 @@ class Trainer(object):
 
 
     def get_ckpt_path(self, name):
+        os.makedirs(self.cfg.logdir, exist_ok=True)
         return os.path.join(self.cfg.logdir, f'{name}.tar')
 
     def ckpt_exists(self, name):

@@ -252,10 +252,7 @@ class Dataset(torch.utils.data.Dataset):
         
         ################################################
         if self.bgcolor is None:
-<<<<<<< HEAD
-=======
             # np.random.seed(self.cfg.train.seed) #######################
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
             bgcolor = (np.random.rand(3) * 255.).astype('float32')
         else:
             bgcolor = np.array(self.bgcolor, dtype='float32')
