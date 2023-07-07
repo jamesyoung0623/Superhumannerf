@@ -406,7 +406,7 @@ class Network(nn.Module):
         return torch.matmul(Rs.reshape(-1, 3, 3), correct_Rs.reshape(-1, 3, 3)).reshape(-1, total_bones, 3, 3)
 
     
-    def forward(self, rays, dst_Rs, dst_Ts, cnl_gtfms, motion_weights_priors, motionCLIP, dst_posevec=None, near=None, far=None, iter_val=1e7, **kwargs):
+    def forward(self, iter_val, rays, dst_Rs, dst_Ts, cnl_gtfms, motion_weights_priors, motionCLIP, dst_posevec=None, near=None, far=None, **kwargs):
         # rays: (2, 2400, 3)
         dst_Rs = dst_Rs[None, ...] # [1, 24, 3, 3]
         dst_Ts = dst_Ts[None, ...] # [1, 24, 3]
