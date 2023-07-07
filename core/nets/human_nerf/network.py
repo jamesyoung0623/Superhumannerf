@@ -45,9 +45,8 @@ class Network(nn.Module):
         
         # canonical ----------------------------------------------
         # canonical positional encoding
-        
         self.cnl_xyz_encoder = tcnn.NetworkWithInputEncoding(
-            n_input_dims=3, n_output_dims=48,
+            n_input_dims=3, n_output_dims=self.cfg.cnl_mlp.xyz_dim,
             encoding_config={
                 "otype": "Grid",
                 "type": "Hash",
@@ -63,7 +62,7 @@ class Network(nn.Module):
                 "activation": "ReLU",
                 "output_activation": "ReLU",
                 "n_neurons": 64,
-                "n_hidden_layers": 1,
+                "n_hidden_layers": 1
             }
         )
         
@@ -71,26 +70,24 @@ class Network(nn.Module):
             n_input_dims=3,
             encoding_config={
                 "otype": "SphericalHarmonics",
-                "degree": 4,
-            },
+                "degree": 4
+            }
         )
-
         
         self.rgb_net = tcnn.Network(
-            n_input_dims=64, n_output_dims=4,
+            n_input_dims=self.cfg.cnl_mlp.xyz_dim+self.cfg.cnl_mlp.dir_dim, n_output_dims=4,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
                 "output_activation": "None",
-                "n_neurons": 64,
-                "n_hidden_layers": 2,
+                "n_neurons": self.cfg.cnl_mlp.mlp_width,
+                "n_hidden_layers": self.cfg.cnl_mlp.mlp_depth
             }
         )
         
         
         # Non-rigid motion ----------------------------------------------
         # non-rigid motion st positional encoding
-    
         self.non_rigid_encoder = tcnn.NetworkWithInputEncoding(
             n_input_dims=3, n_output_dims=36,
             encoding_config={
@@ -108,21 +105,19 @@ class Network(nn.Module):
                 "activation": "ReLU",
                 "output_activation": "ReLU",
                 "n_neurons": 64,
-                "n_hidden_layers": 1,
+                "n_hidden_layers": 1
             }
         )
         
-        
         # non-rigid motion MLP
-        
         self.non_rigid_net = tcnn.Network(
             n_input_dims=105, n_output_dims=3,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
                 "output_activation": "ReLU",
-                "n_neurons": 128,
-                "n_hidden_layers": 5,
+                "n_neurons": self.cfg.non_rigid_motion_mlp.mlp_width,
+                "n_hidden_layers": self.cfg.non_rigid_motion_mlp.mlp_depth
             }
         )
 

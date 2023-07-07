@@ -4,7 +4,7 @@ subject: 'p387'
 experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
 logdir: '../experiments/superhumannerf/zju_mocap/p387/single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
 primary_gpus: [0]
-secondary_gpus: [1, 2, 3]
+secondary_gpus: [0]
 ##############################################3
 ## Network Specs
 
@@ -21,6 +21,8 @@ mweight_volume:
   dst_voxel_size: 0.0625
 
 non_rigid_motion_mlp:
+  mlp_width: 128
+  mlp_depth: 5
   kick_in_iter: 10000
   full_band_iter: 50000
 
