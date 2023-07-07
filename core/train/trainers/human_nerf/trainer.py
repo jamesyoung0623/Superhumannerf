@@ -237,10 +237,8 @@ class Trainer(object):
             for k, v in batch.items():
                 batch[k] = v[0]
 
-            batch['iter_val'] = torch.full((1,), self.iter)
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU)
-            
-            net_output = self.network(**data)
+            net_output = self.network(self.iter, **data)
 
             frameWeightValue = 1.0
             #if LossDistinctness: 
@@ -319,10 +317,9 @@ class Trainer(object):
             # self.cfg.bgcolor = [100, 100, 250] 
             rendered = np.full((height * width, 3), np.array(self.cfg.bgcolor)/255., dtype='float32')
             truth = np.full((height * width, 3), np.array(self.cfg.bgcolor)/255., dtype='float32')
-            batch['iter_val'] = torch.full((1,), self.iter)
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
-                net_output = self.network(**data)
+                net_output = self.network(self.iter, **data)
 
             rgb = net_output['rgb'].data.to("cpu").numpy()
             target_rgbs = batch['target_rgbs']
@@ -459,7 +456,7 @@ class Trainer(object):
             # prediction
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
-                net_output = self.network(**data, iter_val=self.cfg.eval_iter)
+                net_output = self.network(self.iter, **data)
             rgb = net_output['rgb']
             alpha = net_output['alpha']
 
