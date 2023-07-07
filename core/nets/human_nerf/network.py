@@ -10,7 +10,6 @@ from datetime import datetime
 import tinycudann as tcnn
 import numpy as np
 
-from torch.autograd import grad
 
 class Network(nn.Module):
     def __init__(self, cfg):
@@ -67,24 +66,7 @@ class Network(nn.Module):
                 "n_hidden_layers": 1,
             }
         )
-<<<<<<< HEAD
-        """
-        self.cnl_xyz_encoder = tcnn.Encoding(
-            n_input_dims=3,
-            encoding_config={
-                "otype": "HashGrid",
-                "n_levels": L,
-                "n_features_per_level": F,
-                "log2_hashmap_size": log2_T,
-                "base_resolution": N_min,
-                "per_level_scale": b
-            }
-        )
-        """
-
-=======
         
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
         self.cnl_dir_encoder = tcnn.Encoding(
             n_input_dims=3,
             encoding_config={
@@ -106,17 +88,9 @@ class Network(nn.Module):
         )
         
         
-<<<<<<< HEAD
-        #self.rgb_net = rgb_net()
-        
-        # Non-rigid motion ----------------------------------------------
-        # non-rigid motion st positional encoding
-
-=======
         # Non-rigid motion ----------------------------------------------
         # non-rigid motion st positional encoding
     
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
         self.non_rigid_encoder = tcnn.NetworkWithInputEncoding(
             n_input_dims=3, n_output_dims=36,
             encoding_config={
@@ -138,24 +112,7 @@ class Network(nn.Module):
             }
         )
         
-<<<<<<< HEAD
-        """
-        self.non_rigid_encoder = tcnn.Encoding(
-            n_input_dims=3,
-            encoding_config={
-                "otype": "HashGrid",
-                "n_levels": L,
-                "n_features_per_level": F,
-                "log2_hashmap_size": log2_T,
-                "base_resolution": N_min,
-                "per_level_scale": b
-            }
-        )
-        """
-
-=======
         
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
         # non-rigid motion MLP
         
         self.non_rigid_net = tcnn.Network(
@@ -168,9 +125,6 @@ class Network(nn.Module):
                 "n_hidden_layers": 5,
             }
         )
-        
-        
-        #self.non_rigid_net = non_rigid_net()
 
     def _query_mlp(self, pos_xyz, pos_dir, non_rigid_mlp_input):
         
@@ -211,11 +165,7 @@ class Network(nn.Module):
             xyz = pos_flat[start:end] # dj: [307200, 3] 3D coordinates
             dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
             ### -----------------------------------------
-<<<<<<< HEAD
-            if not cfg.network.ignore_non_rigid_motions:
-=======
             if not self.cfg.network.ignore_non_rigid_motions:
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
                 non_rigid_embed_xyz = self.non_rigid_encoder(xyz)                               #(307200, 32)
                 condition_code = self._expand_input(non_rigid_mlp_input, total_elem)            #(307200, 69)
                 non_rigid_input = torch.cat([condition_code, non_rigid_embed_xyz], dim=-1)      #(307200, 101)
@@ -273,10 +223,6 @@ class Network(nn.Module):
         rgb_map = rgb_map + (1.-acc_map[..., None]) * bgcolor[None, :]/255.
 
         return rgb_map, acc_map, weights, depth_map, alpha
-<<<<<<< HEAD
-
-=======
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
 
     def _sample_motion_fields(self, pts, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, output_list):
         orig_shape = list(pts.shape)
@@ -375,8 +321,6 @@ class Network(nn.Module):
         pts_mask = mv_output['fg_likelihood_mask']
         cnl_pts = mv_output['x_skel']               # dj: [2400, 128, 3] (N_rays, N_samples, xyz)
         
-        cnl_pts.requires_grad_()
-        
         # cnl_pts: [2400, 128, 3] (N_rays, N_samples, xyz)
         # distortion loss: normalized distances s, normalized weights w 
         # distloss = self._distortion_loss(cnl_pts,)
@@ -467,58 +411,3 @@ class Network(nn.Module):
             all_ret[k] = torch.reshape(all_ret[k], k_shape)
 
         return all_ret
-    
-def gradient(inputs, outputs):
-    d_points = torch.ones_like(outputs, requires_grad=False, device=outputs.device)
-    points_grad = grad(
-        outputs=outputs,
-        inputs=inputs,
-        grad_outputs=d_points,
-        create_graph=True,
-        retain_graph=True,
-        only_inputs=True)[0][:, :, -3:]
-    return points_grad
-
-class rgb_net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        
-        self.rgb_net = nn.Sequential(
-            nn.Linear(48, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 4)
-        )
-
-    def forward(self, x):
-        x = x.type(torch.FloatTensor).cuda()
-        x = self.rgb_net(x)
-        return x
-    
-class non_rigid_net(nn.Module):
-    def __init__(self):
-        super().__init__()
-        
-        self.non_rigid_net = nn.Sequential(
-            nn.Linear(101, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Linear(64, 3),
-            nn.ReLU()
-        )
-
-    def forward(self, x):
-        x = self.non_rigid_net(x)
-        return x
