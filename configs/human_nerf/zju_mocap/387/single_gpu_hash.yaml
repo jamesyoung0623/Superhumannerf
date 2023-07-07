@@ -1,15 +1,8 @@
 category: 'superhumannerf'
 task: 'zju_mocap'
 subject: 'p387'
-<<<<<<< HEAD
 experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_10_100000_N_patches_6_size_20_non_rigid_5_128_test1'
 
-=======
-experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
-logdir: '../experiments/superhumannerf/zju_mocap/p387/single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
-primary_gpus: [0]
-secondary_gpus: [1, 2, 3]
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
 ##############################################3
 ## Network Specs
 
