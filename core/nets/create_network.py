@@ -1,17 +1,14 @@
 import imp
 
-from configs import cfg
-
-def _query_network():
+def _query_network(cfg):
     module = cfg.network_module
     module_path = module.replace(".", "/") + ".py"
     network = imp.load_source(module, module_path).Network
     print('use network: ' + module_path)
-    # breakpoint()
     return network
 
 
-def create_network():
-    network = _query_network()
-    network = network()
+def create_network(cfg):
+    network = _query_network(cfg)
+    network = network(cfg)
     return network

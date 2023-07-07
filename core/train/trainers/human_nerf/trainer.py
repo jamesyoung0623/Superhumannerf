@@ -15,7 +15,6 @@ from core.utils.network_util import set_requires_grad
 from core.utils.train_util import cpu_data_to_gpu, Timer
 from core.utils.image_util import tile_images, to_8b_image
 
-from configs import cfg
 from datetime import datetime
 
 import skimage
@@ -66,15 +65,16 @@ def scale_for_lpips(image_tensor):
 
 
 class Trainer(object):
-    def __init__(self, network, optimizer):
+    def __init__(self, cfg, network, optimizer):
         print('\n********** Init Trainer ***********')
+        self.cfg = cfg
         self.network = network.cuda()
 
         self.optimizer = optimizer
-        self.update_lr = create_lr_updater()
+        self.update_lr = create_lr_updater(self.cfg)
 
-        if cfg.resume and Trainer.ckpt_exists(cfg.load_net):
-            self.load_ckpt(f'{cfg.load_net}')
+        if self.cfg.resume and self.ckpt_exists(self.cfg.load_net):
+            self.load_ckpt(f'{self.cfg.load_net}')
         else:
             self.iter = 0
             self.save_ckpt('init')
@@ -82,28 +82,26 @@ class Trainer(object):
 
         self.timer = Timer()
 
-        if "lpips" in cfg.train.lossweights.keys():
+        if "lpips" in self.cfg.train.lossweights.keys():
             self.lpips = LPIPS(net='vgg')
             set_requires_grad(self.lpips, requires_grad=True)
             self.lpips = nn.DataParallel(self.lpips).cuda()
 
         print("Load Progress Dataset ...")
-        self.prog_dataloader = create_dataloader(data_type='progress')
+        self.prog_dataloader = create_dataloader(self.cfg, 'progress')
 
         print('************************************')
         
-        self.test_loader = create_dataloader('movement')
-        log_dir = os.path.join(cfg.logdir, 'logs')
+        self.test_loader = create_dataloader(self.cfg, 'movement')
+        log_dir = os.path.join(self.cfg.logdir, 'logs')
         self.swriter = SummaryWriter(log_dir)
 
 
-    @staticmethod
-    def get_ckpt_path(name):
-        return os.path.join(cfg.logdir, f'{name}.tar')
+    def get_ckpt_path(self, name):
+        return os.path.join(self.cfg.logdir, f'{name}.tar')
 
-    @staticmethod
-    def ckpt_exists(name):
-        return os.path.exists(Trainer.get_ckpt_path(name))
+    def ckpt_exists(self, name):
+        return os.path.exists(self.get_ckpt_path(name))
 
     ######################################################
     ## Training 
@@ -167,19 +165,19 @@ class Trainer(object):
         return losses
 
     def get_loss(self, net_output, patch_masks, bgcolor, targets, div_indices, frameWeight=1):
-        lossweights = cfg.train.lossweights 
+        lossweights = self.cfg.train.lossweights 
         loss_names = list(lossweights.keys())
 
-        rgb = net_output['rgb']     # [2560, 3] = (N_patch, H, W, 3)
-        alpha = net_output['alpha'] # [2560] = (N_patch, H, W, 1)
-        depth = net_output['depth'] # [2560] = (N_patch, H, W, 1)
+        rgb = net_output['rgb']                 # [2560, 3] = (N_patch, H, W, 3)
+        alpha = net_output['alpha']             # [2560] = (N_patch, H, W, 1)
+        depth = net_output['depth']             # [2560] = (N_patch, H, W, 1)
 
         losses = self.get_img_rebuild_loss(loss_names, targets, patch_masks, _unpack_alpha(alpha, patch_masks, div_indices), _unpack_imgs(rgb, patch_masks, bgcolor, targets, div_indices))
 
-        if self.iter < cfg.train.opacity_kick_in_iter:
+        if self.iter < self.cfg.train.opacity_kick_in_iter:
             losses['opacity'] *= 0.0
             
-        if self.iter < cfg.train.psnr_kick_in_iter:
+        if self.iter < self.cfg.train.psnr_kick_in_iter:
             losses['psnr'] *= 0.0
         
         train_losses = [ weight * losses[k] for k, weight in lossweights.items() ]
@@ -190,13 +188,14 @@ class Trainer(object):
     def train_begin(self, train_dataloader):
         assert train_dataloader.batch_size == 1
         self.network.train()
+        self.training = True
 
     def train_end(self):
         pass
 
     def train(self, epoch, train_dataloader):
-        #TakeDistinctPoses = cfg.motionCLIP.training_frames_poseDistinct
-        #LossDistinctness = cfg.motionCLIP.training_frames_lossDistinct
+        #TakeDistinctPoses = self.cfg.motionCLIP.training_frames_poseDistinct
+        #LossDistinctness = self.cfg.motionCLIP.training_frames_lossDistinct
         self.train_begin(train_dataloader=train_dataloader)
 
         #if TakeDistinctPoses or LossDistinctness:
@@ -229,7 +228,7 @@ class Trainer(object):
         #        if batch['frame_name'][0] not in candidates: 
         #            continue                                 
 
-            if self.iter > cfg.train.maxiter:
+            if self.iter > self.cfg.train.maxiter:
                 break
 
             self.optimizer.zero_grad()
@@ -237,8 +236,6 @@ class Trainer(object):
             # only access the first batch as we process one image one time
             for k, v in batch.items():
                 batch[k] = v[0]
-            # ['frame_name', 'img_width', 'img_height', 'ray_mask', 'rays', 'near', 'far', 'bgcolor', 'patch_div_indices', 'patch_masks', 'target_patches', 'dst_Rs', 'dst_Ts', 'cnl_gtfms', 'motion_weights_priors', 'cnl_bbox_min_xyz', 'cnl_bbox_max_xyz', 'cnl_bbox_scale_xyz', 'dst_posevec', 'motionCLIP', 'framelist']   
-            
 
             batch['iter_val'] = torch.full((1,), self.iter)
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU)
@@ -261,7 +258,7 @@ class Trainer(object):
             train_loss.backward()
             self.optimizer.step()
 
-            if self.iter % cfg.train.log_interval == 0:
+            if self.iter % self.cfg.train.log_interval == 0:
                 loss_str = f"Loss: {train_loss.item():.4f} [ "
                 for k, v in ori_loss_dict.items():
                     loss_str += f"{k}:{v.item():>2.4f} "
@@ -270,18 +267,18 @@ class Trainer(object):
                 log_str = 'Epoch: {:>3d} [Iter {:>5d}, {:>3d}/{:03d} ({:>3.0f}%), {}] {}'
                 log_str = log_str.format(
                     epoch, self.iter,
-                    (batch_idx+1) * cfg.train.batch_size, len(train_dataloader.dataset),
+                    (batch_idx+1) * self.cfg.train.batch_size, len(train_dataloader.dataset),
                     100. * batch_idx / len(train_dataloader), 
                     self.timer.log(),
                     loss_str
                 )
                 print(log_str)
 
-            if self.iter % cfg.progress.progress_interval == 0:
+            if self.iter % self.cfg.progress.progress_interval == 0:
                 self.progress()
                 self.save_ckpt(f'iter_{self.iter}')
                     
-            self.update_lr(self.optimizer, self.iter)
+            self.update_lr(self.cfg, self.optimizer, self.iter)
             self.iter += 1
         
         self.swriter.close()
@@ -295,11 +292,12 @@ class Trainer(object):
 
     def progress_begin(self):
         self.network.eval()
-        cfg.perturb = 0.
+        self.cfg.perturb = 0.
+        self.training = False
 
     def progress_end(self):
         self.network.train()
-        cfg.perturb = 1
+        self.cfg.perturb = 1
 
     def progress(self):
         self.progress_begin()
@@ -318,9 +316,9 @@ class Trainer(object):
             height = batch['img_height']
             ray_mask = batch['ray_mask']
 
-            # cfg.bgcolor = [100, 100, 250] 
-            rendered = np.full((height * width, 3), np.array(cfg.bgcolor)/255., dtype='float32')
-            truth = np.full((height * width, 3), np.array(cfg.bgcolor)/255., dtype='float32')
+            # self.cfg.bgcolor = [100, 100, 250] 
+            rendered = np.full((height * width, 3), np.array(self.cfg.bgcolor)/255., dtype='float32')
+            truth = np.full((height * width, 3), np.array(self.cfg.bgcolor)/255., dtype='float32')
             batch['iter_val'] = torch.full((1,), self.iter)
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
@@ -348,16 +346,16 @@ class Trainer(object):
             images.append(np.concatenate([rendered, truth], axis=1))
 
             # check if we create empty images (only at the begining of training)
-            if self.iter <= 5000 and np.allclose(rendered, np.array(cfg.bgcolor), atol=5.):
+            if self.iter <= 5000 and np.allclose(rendered, np.array(self.cfg.bgcolor), atol=5.):
                 exit()       
                 
         
         tiled_image = tile_images(images)
         
-        Image.fromarray(tiled_image).save(os.path.join(cfg.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
+        Image.fromarray(tiled_image).save(os.path.join(self.cfg.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
 
-        if self.iter % cfg.progress.eval_interval == 0:
-            self.eval_model(render_folder_name='eval', n=self.iter/cfg.progress.eval_interval)
+        if self.iter % self.cfg.progress.eval_interval == 0:
+            self.eval_model(render_folder_name='eval', n=self.iter/self.cfg.progress.eval_interval)
         
         self.progress_end()
         return
@@ -367,7 +365,7 @@ class Trainer(object):
     ## Utils
 
     def save_ckpt(self, name):
-        path = Trainer.get_ckpt_path(name)
+        path = self.get_ckpt_path(name)
         print(f"Save checkpoint to {path} ...")
 
         torch.save({
@@ -377,7 +375,7 @@ class Trainer(object):
         }, path)
 
     def load_ckpt(self, name):
-        path = Trainer.get_ckpt_path(name)
+        path = self.get_ckpt_path(name)
         print(f"Load checkpoint from {path} ...")
         
         ckpt = torch.load(path, map_location='cuda:0')
@@ -391,7 +389,7 @@ class Trainer(object):
     
     def load_network(self, checkpoint):
         model = create_network()
-        ckpt_path = os.path.join(cfg.logdir, f'{checkpoint}.tar')
+        ckpt_path = os.path.join(self.cfg.logdir, f'{checkpoint}.tar')
         ckpt = torch.load(ckpt_path, map_location='cuda:0')
         model.load_state_dict(ckpt['network'], strict=False)
         print('load network from ', ckpt_path)
@@ -433,8 +431,8 @@ class Trainer(object):
 
     def lpips_metric(self, model, pred, target):
         # convert range from 0-1 to -1-1
-        processed_pred = torch.from_numpy(pred).float().unsqueeze(0).to(cfg.primary_gpus[0]) * 2. - 1.
-        processed_target = torch.from_numpy(target).float().unsqueeze(0).to(cfg.primary_gpus[0]) * 2. - 1.
+        processed_pred = torch.from_numpy(pred).float().unsqueeze(0).to(self.cfg.primary_gpus[0]) * 2. - 1.
+        processed_target = torch.from_numpy(target).float().unsqueeze(0).to(self.cfg.primary_gpus[0]) * 2. - 1.
 
         lpips_loss = model(processed_pred.permute(0, 3, 1, 2), processed_target.permute(0, 3, 1, 2))
         return torch.mean(lpips_loss).cpu().detach().item()
@@ -443,10 +441,10 @@ class Trainer(object):
         set_requires_grad(self.lpips, requires_grad=False)
 
         out_folder_name = f'iter_{self.iter}_{render_folder_name}'
-        #if os.path.isdir(os.path.join(cfg.logdir, out_folder_name)):
+        #if os.path.isdir(os.path.join(self.cfg.logdir, out_folder_name)):
         #    continue
         
-        self.writer = ImageWriter(output_dir=cfg.logdir, exp_name=out_folder_name)
+        self.writer = ImageWriter(output_dir=self.cfg.logdir, exp_name=out_folder_name)
 
         PSNRA = []
         SSIMA = []
@@ -461,12 +459,12 @@ class Trainer(object):
             # prediction
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
-                net_output = self.network(**data, iter_val=cfg.eval_iter)
+                net_output = self.network(**data, iter_val=self.cfg.eval_iter)
             rgb = net_output['rgb']
             alpha = net_output['alpha']
 
             rgb_img, alpha_img, truth_img = self.unpack_to_image(
-                width, height, ray_mask, np.array(cfg.bgcolor) / 255.,
+                width, height, ray_mask, np.array(self.cfg.bgcolor) / 255.,
                 rgb.data.cpu().numpy(),
                 alpha.data.cpu().numpy(),
                 batch['target_rgbs']
@@ -496,3 +494,4 @@ class Trainer(object):
         self.swriter.add_scalar('AllCP_PSNR', psnr_mean, n)
         self.swriter.add_scalar('AllCP_SSIM', ssim_mean, n)
         self.swriter.add_scalar('AllCP_LPIPS', lpips_mean*1000, n)
+        

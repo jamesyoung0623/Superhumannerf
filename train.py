@@ -1,6 +1,3 @@
-from configs import cfg
-
-from core.utils.log_util import Logger
 from core.data import create_dataloader
 from core.nets import create_network
 from core.train import create_trainer, create_optimizer
@@ -14,6 +11,7 @@ import torch
 import torch.cuda
 import torch.backends.cudnn
 
+import hydra
 
 def make_deterministic(seed):
     '''Seed everything for better reproducibility.
@@ -37,16 +35,14 @@ def make_deterministic(seed):
 
     # modify the function _worker_init_fn defined in /home/djchen/PROJECTS/HumanNeRF/superhumannerf/core/data/create_dataset.py
     # see https://pytorch.org/docs/stable/notes/randomness.html#pytorch
-    
-def main():
-    log = Logger()
-    log.print_config()
-    print('fixed random seed: %d' % cfg.train.seed)
+
+@hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/387/', config_name='single_gpu_hash')
+def main(cfg):
     make_deterministic(cfg.train.seed)
-    model = create_network()
-    optimizer = create_optimizer(model)
-    trainer = create_trainer(model, optimizer)
-    train_loader = create_dataloader('train')
+    model = create_network(cfg)
+    optimizer = create_optimizer(cfg, model)
+    trainer = create_trainer(cfg, model, optimizer)
+    train_loader = create_dataloader(cfg, 'train')
 
     # estimate start epoch
     tic = datetime.now()

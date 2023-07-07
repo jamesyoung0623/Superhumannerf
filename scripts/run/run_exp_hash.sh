@@ -1,1 +1,0 @@
-CUDA_VISIBLE_DEVICES=0 python train.py --cfg configs/human_nerf/zju_mocap/387/single_gpu_hash.yaml

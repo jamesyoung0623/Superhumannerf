@@ -1,10 +1,8 @@
 
-from configs import cfg
-
 def get_customized_lr_names():
     return [k[3:] for k in cfg.train.keys() if k.startswith('lr_')]
 
-def update_lr(optimizer, iter_step):
+def update_lr(cfg, optimizer, iter_step):
     decay_rate = 0.1
     decay_steps = cfg.train.lrate_decay * 1000
     decay_value = decay_rate ** (iter_step / decay_steps)
