@@ -1,18 +1,16 @@
 import torch.optim as optim
 
-from configs import cfg
-
 _optimizers = {
     'adam': optim.Adam
 }
 
-def get_customized_lr_names():
+def get_customized_lr_names(cfg):
     return [k[3:] for k in cfg.train.keys() if k.startswith('lr_')]
 
-def get_optimizer(network):
+def get_optimizer(cfg, network):
     optimizer = _optimizers[cfg.train.optimizer]
 
-    cus_lr_names = get_customized_lr_names()
+    cus_lr_names = get_customized_lr_names(cfg)
     params = []
     print('\n\n********** learnable parameters **********\n')
     for key, value in network.named_parameters():

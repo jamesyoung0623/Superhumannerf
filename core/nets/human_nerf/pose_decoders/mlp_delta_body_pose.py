@@ -1,22 +1,23 @@
 import torch.nn as nn
-
+import tinycudann as tcnn
 from core.utils.network_util import initseq, RodriguesModule
 
-from configs import cfg
-
-import tinycudann as tcnn
 
 class BodyPoseRefiner(nn.Module):
-    def __init__(self, embedding_size=69, mlp_width=256, mlp_depth=4, **_):
+    def __init__(self, cfg):
         super(BodyPoseRefiner, self).__init__()
-        # embedding_size: 69; mlp_width: 256; mlp_depth: 4
-        block_mlps = [nn.Linear(embedding_size, mlp_width), nn.ReLU()]
+        self.embedding_size = cfg.pose_decoder.embedding_size
+        self.mlp_width = cfg.pose_decoder.mlp_width
+        self.mlp_depth = cfg.pose_decoder.mlp_depth
         
-        for _ in range(0, mlp_depth-1):
-            block_mlps += [nn.Linear(mlp_width, mlp_width), nn.ReLU()]
+        # embedding_size: 69; mlp_width: 256; mlp_depth: 4
+        block_mlps = [nn.Linear(self.embedding_size, self.mlp_width), nn.ReLU()]
+        
+        for _ in range(0, self.mlp_depth-1):
+            block_mlps += [nn.Linear(self.mlp_width, self.mlp_width), nn.ReLU()]
 
         self.total_bones = cfg.total_bones - 1
-        block_mlps += [nn.Linear(mlp_width, 3 * self.total_bones)]
+        block_mlps += [nn.Linear(self.mlp_width, 3 * self.total_bones)]
 
         self.block_mlps = nn.Sequential(*block_mlps)
         initseq(self.block_mlps)

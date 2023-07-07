@@ -11,13 +11,11 @@ from core.utils.body_util import body_pose_to_body_RTs, get_canonical_global_tfm
 from core.utils.file_util import list_files, split_path
 from core.utils.camera_util import apply_global_tfm_to_camera, get_rays_from_KRT, rays_intersect_3d_bbox
 
-from configs import cfg
-
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
+    def __init__(self, cfg, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
         print('[Dataset Path]', dataset_path) 
-
+        self.cfg = cfg
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
@@ -28,7 +26,7 @@ class Dataset(torch.utils.data.Dataset):
                 self.canonical_joints,   
                 self.canonical_bbox['min_xyz'],
                 self.canonical_bbox['max_xyz'],
-                grid_size=cfg.mweight_volume.volume_size
+                grid_size=self.cfg.mweight_volume.volume_size
             ).astype('float32')
 
 
@@ -64,14 +62,13 @@ class Dataset(torch.utils.data.Dataset):
 
     def load_train_motionCLIP(self):
         motionCLIP = None
-        with open(os.path.join(self.dataset_path, cfg.motionCLIP.encoded_feats), 'rb') as f: 
+        with open(os.path.join(self.dataset_path, self.cfg.motionCLIP.encoded_feats), 'rb') as f: 
             motionCLIP = pickle.load(f) 
         return motionCLIP.cpu().detach().numpy()
     
-    @staticmethod
-    def skeleton_to_bbox(skeleton):
-        min_xyz = np.min(skeleton, axis=0) - cfg.bbox_offset
-        max_xyz = np.max(skeleton, axis=0) + cfg.bbox_offset
+    def skeleton_to_bbox(self, skeleton):
+        min_xyz = np.min(skeleton, axis=0) - self.cfg.bbox_offset
+        max_xyz = np.max(skeleton, axis=0) + self.cfg.bbox_offset
 
         return {'min_xyz': min_xyz, 'max_xyz': max_xyz}
 
@@ -99,8 +96,7 @@ class Dataset(torch.utils.data.Dataset):
             'Th': self.mesh_infos[frame_name]['Th'].astype('float32')
         }
 
-    @staticmethod
-    def select_rays(select_inds, rays_o, rays_d, ray_img, near, far):
+    def select_rays(self, select_inds, rays_o, rays_d, ray_img, near, far):
         rays_o = rays_o[select_inds]
         rays_d = rays_d[select_inds]
         ray_img = ray_img[select_inds]
@@ -125,11 +121,11 @@ class Dataset(torch.utils.data.Dataset):
         total_rays = 0
         patch_div_indices = [total_rays]
         for _ in range(N_patch):
-            # let p = cfg.patch.sample_subject_ratio
+            # let p = self.cfg.patch.sample_subject_ratio
             # prob p: we sample on subject area
             # prob (1-p): we sample on non-subject area but still in bbox
-            # np.random.seed(cfg.train.seed) #######################
-            if np.random.rand(1)[0] < cfg.patch.sample_subject_ratio:
+            # np.random.seed(self.cfg.train.seed) #######################
+            if np.random.rand(1)[0] < self.cfg.patch.sample_subject_ratio:
                 candidate_mask = subject_mask
             else:
                 candidate_mask = bbox_exclude_subject_mask
@@ -167,7 +163,7 @@ class Dataset(torch.utils.data.Dataset):
 
         # determine patch center
         ####################################
-        # np.random.seed(cfg.train.seed) #######################
+        # np.random.seed(self.cfg.train.seed) #######################
         select_idx = np.random.choice(valid_ys.shape[0], size=[1], replace=False)[0]
         center_x = valid_xs[select_idx]
         center_y = valid_ys[select_idx]
@@ -211,9 +207,9 @@ class Dataset(torch.utils.data.Dataset):
 
         alpha_mask = alpha_mask / 255.
         img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
-        if cfg.resize_img_scale != 1.:
-            img = cv2.resize(img, None, fx=cfg.resize_img_scale, fy=cfg.resize_img_scale, interpolation=cv2.INTER_LANCZOS4)
-            alpha_mask = cv2.resize(alpha_mask, None, fx=cfg.resize_img_scale, fy=cfg.resize_img_scale, interpolation=cv2.INTER_LINEAR)
+        if self.cfg.resize_img_scale != 1.:
+            img = cv2.resize(img, None, fx=self.cfg.resize_img_scale, fy=self.cfg.resize_img_scale, interpolation=cv2.INTER_LANCZOS4)
+            alpha_mask = cv2.resize(alpha_mask, None, fx=self.cfg.resize_img_scale, fy=self.cfg.resize_img_scale, interpolation=cv2.INTER_LINEAR)
                                 
         return img, alpha_mask
 
@@ -224,11 +220,11 @@ class Dataset(torch.utils.data.Dataset):
     def sample_patch_rays(self, img, H, W, subject_mask, bbox_mask, ray_mask, rays_o, rays_d, ray_img, near, far):
 
         select_inds, patch_info, patch_div_indices = self.get_patch_ray_indices(
-            N_patch=cfg.patch.N_patches, 
+            N_patch=self.cfg.patch.N_patches, 
             ray_mask=ray_mask, 
             subject_mask=subject_mask, 
             bbox_mask=bbox_mask,
-            patch_size=cfg.patch.size, 
+            patch_size=self.cfg.patch.size, 
             H=H, W=W
         )
 
@@ -236,7 +232,7 @@ class Dataset(torch.utils.data.Dataset):
         
         targets = []
         
-        for i in range(cfg.patch.N_patches):
+        for i in range(self.cfg.patch.N_patches):
             x_min, y_min = patch_info['xy_min'][i] 
             x_max, y_max = patch_info['xy_max'][i]
             targets.append(img[y_min:y_max, x_min:x_max])
@@ -256,7 +252,7 @@ class Dataset(torch.utils.data.Dataset):
         
         ################################################
         if self.bgcolor is None:
-            # np.random.seed(cfg.train.seed) #######################
+            # np.random.seed(self.cfg.train.seed) #######################
             bgcolor = (np.random.rand(3) * 255.).astype('float32')
         else:
             bgcolor = np.array(self.bgcolor, dtype='float32')
@@ -273,7 +269,7 @@ class Dataset(torch.utils.data.Dataset):
         
         assert frame_name in self.cameras
         K = self.cameras[frame_name]['intrinsics'][:3, :3].copy()
-        K[:2] *= cfg.resize_img_scale
+        K[:2] *= self.cfg.resize_img_scale
 
         E = self.cameras[frame_name]['extrinsics']
         E = apply_global_tfm_to_camera(E=E, Rh=dst_skel_info['Rh'], Th=dst_skel_info['Th'])

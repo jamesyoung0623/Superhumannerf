@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from core.utils.network_util import MotionBasisComputer
 from core.nets.human_nerf.component_factory import load_mweight_vol_decoder, load_pose_decoder
 
-from configs import cfg
 from datetime import datetime
 
 import tinycudann as tcnn
@@ -13,26 +12,19 @@ import numpy as np
 
 
 class Network(nn.Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super(Network, self).__init__()
+        self.cfg = cfg
         # Skeletal motion ----------------------------------------------
         # motion basis computer
-        self.motion_basis_computer = MotionBasisComputer(total_bones=cfg.total_bones)
+        self.motion_basis_computer = MotionBasisComputer(total_bones=self.cfg.total_bones)
 
         # motion weight volume
-        self.mweight_vol_decoder = load_mweight_vol_decoder(cfg.mweight_volume.module)(
-            embedding_size=cfg.mweight_volume.embedding_size,
-            volume_size=cfg.mweight_volume.volume_size,
-            total_bones=cfg.total_bones
-        )
+        self.mweight_vol_decoder = load_mweight_vol_decoder(self.cfg.mweight_volume.module)(self.cfg)
 
         # pose correction -------------------------------------------
         # load_pose_decoder:
-        self.pose_decoder = load_pose_decoder(cfg.pose_decoder.module)(
-            embedding_size=cfg.pose_decoder.embedding_size,
-            mlp_width=cfg.pose_decoder.mlp_width,
-            mlp_depth=cfg.pose_decoder.mlp_depth
-        )   
+        self.pose_decoder = load_pose_decoder(cfg.pose_decoder.module)(self.cfg)   
         
         scale=1
         self.scale = scale
@@ -55,7 +47,7 @@ class Network(nn.Module):
         # canonical positional encoding
         
         self.cnl_xyz_encoder = tcnn.NetworkWithInputEncoding(
-            n_input_dims=3, n_output_dims=32,
+            n_input_dims=3, n_output_dims=48,
             encoding_config={
                 "otype": "Grid",
                 "type": "Hash",
@@ -74,7 +66,7 @@ class Network(nn.Module):
                 "n_hidden_layers": 1,
             }
         )
-
+        
         self.cnl_dir_encoder = tcnn.Encoding(
             n_input_dims=3,
             encoding_config={
@@ -83,8 +75,9 @@ class Network(nn.Module):
             },
         )
 
+        
         self.rgb_net = tcnn.Network(
-            n_input_dims=48, n_output_dims=4,
+            n_input_dims=64, n_output_dims=4,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
@@ -94,8 +87,10 @@ class Network(nn.Module):
             }
         )
         
+        
         # Non-rigid motion ----------------------------------------------
         # non-rigid motion st positional encoding
+    
         self.non_rigid_encoder = tcnn.NetworkWithInputEncoding(
             n_input_dims=3, n_output_dims=36,
             encoding_config={
@@ -116,8 +111,10 @@ class Network(nn.Module):
                 "n_hidden_layers": 1,
             }
         )
-
+        
+        
         # non-rigid motion MLP
+        
         self.non_rigid_net = tcnn.Network(
             n_input_dims=105, n_output_dims=3,
             network_config={
@@ -129,26 +126,12 @@ class Network(nn.Module):
             }
         )
 
-        #if self.rgb_act == 'None': # rgb_net output is log-radiance
-        #    for i in range(3):
-        #        tonemapper_net = tcnn.Network(
-        #            n_input_dims=1, n_output_dims=1,
-        #            network_config={
-        #                "otype": "FullyFusedMLP",
-        #                "activation": "ReLU",
-        #                "output_activation": "Sigmoid",
-        #                "n_neurons": 64,
-        #                "n_hidden_layers": 1,
-        #            }
-        #        )
-        #        setattr(self, f'tonemapper_net_{i}', tonemapper_net)
-
     def _query_mlp(self, pos_xyz, pos_dir, non_rigid_mlp_input):
         
         # (N_rays, N_samples, 3) --> (N_rays x N_samples, 3) 
         pos_flat = torch.reshape(pos_xyz, [-1, pos_xyz.shape[-1]])   # dj: [307200, 3]
         dir_flat = torch.reshape(pos_dir, [-1, pos_xyz.shape[-1]])   # dj: [307200, 3]
-        chunk = cfg.netchunk_per_gpu*len(cfg.secondary_gpus)         # dj: cfg.netchunk_per_gpu=300000
+        chunk = self.cfg.netchunk_per_gpu*len(self.cfg.secondary_gpus)
         
         result = self._apply_mlp_kernels(
             pos_flat=pos_flat,
@@ -164,13 +147,10 @@ class Network(nn.Module):
 
         return output
 
-
-    @staticmethod
-    def _expand_input(input_data, total_elem):
+    def _expand_input(self, input_data, total_elem):
         assert input_data.shape[0] == 1
         input_size = input_data.shape[1]
         return input_data.expand((total_elem, input_size))
-
 
     def _apply_mlp_kernels(self, pos_flat, dir_flat, non_rigid_mlp_input, chunk):
         raws = []
@@ -185,10 +165,10 @@ class Network(nn.Module):
             xyz = pos_flat[start:end] # dj: [307200, 3] 3D coordinates
             dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
             ### -----------------------------------------
-            if not cfg.network.ignore_non_rigid_motions:
-                non_rigid_embed_xyz = self.non_rigid_encoder(xyz)                               #(307200, 59)
+            if not self.cfg.network.ignore_non_rigid_motions:
+                non_rigid_embed_xyz = self.non_rigid_encoder(xyz)                               #(307200, 32)
                 condition_code = self._expand_input(non_rigid_mlp_input, total_elem)            #(307200, 69)
-                non_rigid_input = torch.cat([condition_code, non_rigid_embed_xyz], dim=-1)      #(307200, 128)
+                non_rigid_input = torch.cat([condition_code, non_rigid_embed_xyz], dim=-1)      #(307200, 101)
                 non_rigid_output = self.non_rigid_net(non_rigid_input)                          #(307200, 3)
                 xyz = xyz + non_rigid_output
 
@@ -203,13 +183,12 @@ class Network(nn.Module):
 
             raws += [cnl_mlp_output]
 
-        return {'raws': torch.cat(raws, dim=0).to(cfg.primary_gpus[0])}
-
+        return {'raws': torch.cat(raws, dim=0).to(self.cfg.primary_gpus[0])}
 
     def _batchify_rays(self, rays_flat, **kwargs):
         all_ret = {}
-        for i in range(0, rays_flat.shape[0], cfg.chunk):
-            ret = self._render_rays(rays_flat[i:i+cfg.chunk], **kwargs)
+        for i in range(0, rays_flat.shape[0], self.cfg.chunk):
+            ret = self._render_rays(rays_flat[i:i+self.cfg.chunk], **kwargs)
             for k in ret:
                 if k not in all_ret:
                     all_ret[k] = []
@@ -217,9 +196,7 @@ class Network(nn.Module):
 
         return {k : torch.cat(all_ret[k], 0) for k in all_ret}
 
-
-    @staticmethod
-    def _raw2outputs(raw, raw_mask, z_vals, rays_d, bgcolor=None):
+    def _raw2outputs(self, raw, raw_mask, z_vals, rays_d, bgcolor=None):
         # raw: [N_rays, N_samples, 4]
         # raw_mask : [N_rays, N_samples, 1]
         # z_vals : [N_rays, N_samples]
@@ -235,7 +212,7 @@ class Network(nn.Module):
         rgb = torch.sigmoid(raw[..., :3])
         # [N_rays, N_samples]
         alpha = 1.0 - torch.exp(-F.relu(raw[..., 3])*dists)
-
+        
         alpha = alpha * raw_mask[:, :, 0]                                      # [N_rays, N_samples]
         weights = alpha * torch.cumprod( torch.cat([torch.ones((alpha.shape[0], 1)).to(alpha), 1.-alpha + 1e-10], dim=-1), dim=-1)[:, :-1]
         rgb_map = torch.sum(weights[..., None] * rgb, -2)                       # [N_rays, 3]
@@ -245,11 +222,9 @@ class Network(nn.Module):
 
         rgb_map = rgb_map + (1.-acc_map[..., None]) * bgcolor[None, :]/255.
 
-        return rgb_map, acc_map, weights, depth_map
+        return rgb_map, acc_map, weights, depth_map, alpha
 
-
-    @staticmethod
-    def _sample_motion_fields(pts, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, output_list):
+    def _sample_motion_fields(self, pts, motion_scale_Rs, motion_Ts, motion_weights_vol, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, output_list):
         orig_shape = list(pts.shape)
         pts = pts.reshape(-1, 3) # [N_rays x N_samples, 3]
 
@@ -300,24 +275,19 @@ class Network(nn.Module):
         
         return results
 
-
-    @staticmethod
-    def _unpack_ray_batch(ray_batch):
+    def _unpack_ray_batch(self, ray_batch):
         rays_o, rays_d = ray_batch[:, 0:3], ray_batch[:, 3:6] 
         bounds = torch.reshape(ray_batch[..., 6:8], [-1, 1, 2]) 
         near, far = bounds[..., 0], bounds[..., 1] 
         return rays_o, rays_d, near, far
 
 
-    @staticmethod
-    def _get_samples_along_ray(N_rays, near, far):
-        t_vals = torch.linspace(0., 1., steps=cfg.N_samples).to(near)
+    def _get_samples_along_ray(self, N_rays, near, far):
+        t_vals = torch.linspace(0., 1., steps=self.cfg.N_samples).to(near)
         z_vals = near * (1.-t_vals) + far * (t_vals)
-        return z_vals.expand([N_rays, cfg.N_samples]) 
+        return z_vals.expand([N_rays, self.cfg.N_samples]) 
 
-
-    @staticmethod
-    def _stratified_sampling(z_vals):
+    def _stratified_sampling(self, z_vals):
         mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
         upper = torch.cat([mids, z_vals[..., -1:]], -1)
         lower = torch.cat([z_vals[..., :1], mids], -1)
@@ -333,10 +303,10 @@ class Network(nn.Module):
 
         z_vals = self._get_samples_along_ray(N_rays, near, far) # dj: [N_rays=2400, nSamples=128]
         
-        if cfg.perturb > 0.:
+        if self.cfg.perturb > 0.:
             z_vals = self._stratified_sampling(z_vals)          # dj: [N_rays=2400, nSamples=128]
 
-        pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None] # dj: [2400,128,3] (N_rays, N_samples, xyz)
+        pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None] # dj: [2400, 128, 3] (N_rays, N_samples, xyz)
 
         mv_output = self._sample_motion_fields(
             pts=pts,
@@ -365,8 +335,8 @@ class Network(nn.Module):
         )
         raw = query_result['raws']
         
-        rgb_map, acc_map, _, depth_map = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
-
+        rgb_map, acc_map, _, depth_map, alpha = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
+        
         return {'rgb' : rgb_map, 'alpha' : acc_map, 'depth': depth_map}
 
 
@@ -375,10 +345,8 @@ class Network(nn.Module):
 
         return motion_scale_Rs, motion_Ts
 
-
-    @staticmethod
-    def _multiply_corrected_Rs(Rs, correct_Rs):
-        total_bones = cfg.total_bones - 1
+    def _multiply_corrected_Rs(self, Rs, correct_Rs):
+        total_bones = self.cfg.total_bones - 1
         return torch.matmul(Rs.reshape(-1, 3, 3), correct_Rs.reshape(-1, 3, 3)).reshape(-1, total_bones, 3, 3)
 
     
@@ -393,20 +361,20 @@ class Network(nn.Module):
 
         # correct body pose
         ### -----------------------------------------
-        if not cfg.network.ignore_pose_correction and iter_val >= cfg.pose_decoder.kick_in_iter:
+        if not self.cfg.network.ignore_pose_correction and iter_val >= self.cfg.pose_decoder.kick_in_iter:
             pose_out = self.pose_decoder(dst_posevec) # [1, 23, 3, 3] axis-angle (3) to rotation matrix (3,3)
             delta_Rs = pose_out['Rs'] # [1, 23, 3, 3]
             delta_Ts = pose_out.get('Ts', None)
            
             dst_Rs_no_root = dst_Rs[:, 1:, ...]
-            dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root,delta_Rs)
+            dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root, delta_Rs)
             dst_Rs = torch.cat([dst_Rs[:, 0:1, ...], dst_Rs_no_root], dim=1)
         
             if delta_Ts is not None:
                 dst_Ts = dst_Ts + delta_Ts
 
         # delayed optimization
-        if iter_val < cfg.non_rigid_motion_mlp.kick_in_iter:
+        if iter_val < self.cfg.non_rigid_motion_mlp.kick_in_iter:
             # mask-out non_rigid_mlp_input 
             non_rigid_mlp_input = torch.zeros_like(dst_posevec) * dst_posevec
         else:

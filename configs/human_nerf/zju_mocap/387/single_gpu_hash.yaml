@@ -1,8 +1,10 @@
 category: 'superhumannerf'
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_50000_N_patches_6_size_20_non_rigid_5_128_test1'
-
+experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
+logdir: '../experiments/superhumannerf/zju_mocap/p387/single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
+primary_gpus: [0]
+secondary_gpus: [1, 2, 3]
 ##############################################3
 ## Network Specs
 
@@ -28,6 +30,12 @@ pose_decoder:
   mlp_width: 256
   mlp_depth: 4
   kick_in_iter: 0
+
+cnl_mlp:
+  xyz_dim: 48
+  dir_dim: 16
+  mlp_width: 64
+  mlp_depth: 2
 
 motionCLIP:
   encoded_feats: 'motionCLIP_token[s]_nbrs[1].pkl' # token: z/s(self); neighborhoods: #neighbors 
@@ -60,7 +68,7 @@ train:
     opacity: 1.0             
     l1: 0.2                 
     psnr: 0.0   
-  opacity_kick_in_iter: 50000           
+  opacity_kick_in_iter: 100000           
   psnr_kick_in_iter: 100000            
 
 progress:
@@ -119,7 +127,7 @@ patch:
 
 network:
   ignore_pose_correction: False
-  ignore_non_rigid_motions: False 
+  ignore_non_rigid_motions: False
   apply_hash_coding: True
 
 netchunk_per_gpu: 308000 # dj: [307200=2400*128] number of pts sent through network in parallel, decrease if running out of memory
@@ -129,5 +137,6 @@ N_samples: 128
 chunk: 32768   # 32768=1024*32, number of rays processed in parallel, decrease if running out of memory
 perturb: 1
 n_gpus: 1
+num_workers: 1
 show_alpha: False  
 show_truth: False
