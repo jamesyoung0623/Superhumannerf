@@ -15,10 +15,7 @@ from core.utils.camera_util import apply_global_tfm_to_camera, get_rays_from_KRT
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, cfg, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
         print('[Dataset Path]', dataset_path) 
-<<<<<<< HEAD
-=======
         self.cfg = cfg
->>>>>>> 7c4f382b0ad576cfb3ca27df9fda26aad4f0386c
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
