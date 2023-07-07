@@ -1,2 +1,1 @@
-CUDA_VISIBLE_DEVICES=3 python train.py --cfg configs/human_nerf/zju_mocap/387/single_gpu_hash.yaml
-#PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:4096 CUDA_VISIBLE_DEVICES=0 python train.py --cfg configs/human_nerf/zju_mocap/387/single_gpu_hash.yaml
+CUDA_VISIBLE_DEVICES=0 python train.py --cfg configs/human_nerf/zju_mocap/387/single_gpu_hash.yaml

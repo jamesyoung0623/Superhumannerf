@@ -1,11 +1,7 @@
 import numpy as np
 import cv2
 
-def _update_extrinsics(
-        extrinsics, 
-        angle, 
-        trans=None, 
-        rotate_axis='y'):
+def _update_extrinsics(extrinsics, angle, trans=None, rotate_axis='y'):
     r""" Uptate camera extrinsics when rotating it around a standard axis.
 
     Args:
@@ -81,13 +77,7 @@ def get_camrot(campos, lookat=None, inv_camera=False):
     return camrot
 
 
-def rotate_camera_by_frame_idx(
-        extrinsics, 
-        frame_idx, 
-        trans=None,
-        rotate_axis='y',
-        period=196,
-        inv_angle=False):
+def rotate_camera_by_frame_idx(extrinsics, frame_idx, trans=None, rotate_axis='y', period=196, inv_angle=False):
     r""" Get camera extrinsics based on frame index and rotation period.
 
     Args:
@@ -105,8 +95,7 @@ def rotate_camera_by_frame_idx(
     angle = 2 * np.pi * (frame_idx / period)
     if inv_angle:
         angle = -angle
-    return _update_extrinsics(
-                extrinsics, angle, trans, rotate_axis)
+    return _update_extrinsics(extrinsics, angle, trans, rotate_axis)
 
 
 def apply_global_tfm_to_camera(E, Rh, Th):
@@ -143,13 +132,10 @@ def get_rays_from_KRT(H, W, K, R, T):
         - rays_o: Array (H, W, 3)
         - rays_d: Array (H, W, 3)
     """
-
     # calculate the camera origin
     rays_o = -np.dot(R.T, T).ravel()
     # calculate the world coodinates of pixels
-    i, j = np.meshgrid(np.arange(W, dtype=np.float32),
-                       np.arange(H, dtype=np.float32),
-                       indexing='xy')
+    i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
     xy1 = np.stack([i, j, np.ones_like(i)], axis=2)
     pixel_camera = np.dot(xy1, np.linalg.inv(K).T)
     pixel_world = np.dot(pixel_camera - T.ravel(), R)
@@ -173,7 +159,7 @@ def rays_intersect_3d_bbox(bounds, ray_o, ray_d):
 
     if isinstance(bounds, dict):
         bounds = np.stack([bounds['min_xyz'], bounds['max_xyz']], axis=0)
-    assert bounds.shape == (2,3)
+    assert bounds.shape == (2, 3)
 
     bounds = bounds + np.array([-0.01, 0.01])[:, None]
     nominator = bounds[None] - ray_o[:, None] # (N_rays, 2, 3)

@@ -11,6 +11,7 @@ from datetime import datetime
 import tinycudann as tcnn
 import numpy as np
 
+from torch.autograd import grad
 
 class Network(nn.Module):
     def __init__(self):
@@ -55,7 +56,7 @@ class Network(nn.Module):
         # canonical positional encoding
         
         self.cnl_xyz_encoder = tcnn.NetworkWithInputEncoding(
-            n_input_dims=3, n_output_dims=32,
+            n_input_dims=3, n_output_dims=48,
             encoding_config={
                 "otype": "Grid",
                 "type": "Hash",
@@ -74,6 +75,19 @@ class Network(nn.Module):
                 "n_hidden_layers": 1,
             }
         )
+        """
+        self.cnl_xyz_encoder = tcnn.Encoding(
+            n_input_dims=3,
+            encoding_config={
+                "otype": "HashGrid",
+                "n_levels": L,
+                "n_features_per_level": F,
+                "log2_hashmap_size": log2_T,
+                "base_resolution": N_min,
+                "per_level_scale": b
+            }
+        )
+        """
 
         self.cnl_dir_encoder = tcnn.Encoding(
             n_input_dims=3,
@@ -83,8 +97,9 @@ class Network(nn.Module):
             },
         )
 
+        
         self.rgb_net = tcnn.Network(
-            n_input_dims=48, n_output_dims=4,
+            n_input_dims=64, n_output_dims=4,
             network_config={
                 "otype": "FullyFusedMLP",
                 "activation": "ReLU",
@@ -94,8 +109,12 @@ class Network(nn.Module):
             }
         )
         
+        
+        #self.rgb_net = rgb_net()
+        
         # Non-rigid motion ----------------------------------------------
         # non-rigid motion st positional encoding
+
         self.non_rigid_encoder = tcnn.NetworkWithInputEncoding(
             n_input_dims=3, n_output_dims=36,
             encoding_config={
@@ -116,8 +135,23 @@ class Network(nn.Module):
                 "n_hidden_layers": 1,
             }
         )
+        
+        """
+        self.non_rigid_encoder = tcnn.Encoding(
+            n_input_dims=3,
+            encoding_config={
+                "otype": "HashGrid",
+                "n_levels": L,
+                "n_features_per_level": F,
+                "log2_hashmap_size": log2_T,
+                "base_resolution": N_min,
+                "per_level_scale": b
+            }
+        )
+        """
 
         # non-rigid motion MLP
+        
         self.non_rigid_net = tcnn.Network(
             n_input_dims=105, n_output_dims=3,
             network_config={
@@ -128,6 +162,9 @@ class Network(nn.Module):
                 "n_hidden_layers": 5,
             }
         )
+        
+        
+        #self.non_rigid_net = non_rigid_net()
 
         #if self.rgb_act == 'None': # rgb_net output is log-radiance
         #    for i in range(3):
@@ -186,9 +223,9 @@ class Network(nn.Module):
             dir = dir_flat[start:end] # dj: [307200, 3] 3D coordinates' directions
             ### -----------------------------------------
             if not cfg.network.ignore_non_rigid_motions:
-                non_rigid_embed_xyz = self.non_rigid_encoder(xyz)                               #(307200, 59)
+                non_rigid_embed_xyz = self.non_rigid_encoder(xyz)                               #(307200, 32)
                 condition_code = self._expand_input(non_rigid_mlp_input, total_elem)            #(307200, 69)
-                non_rigid_input = torch.cat([condition_code, non_rigid_embed_xyz], dim=-1)      #(307200, 128)
+                non_rigid_input = torch.cat([condition_code, non_rigid_embed_xyz], dim=-1)      #(307200, 101)
                 non_rigid_output = self.non_rigid_net(non_rigid_input)                          #(307200, 3)
                 xyz = xyz + non_rigid_output
 
@@ -235,7 +272,7 @@ class Network(nn.Module):
         rgb = torch.sigmoid(raw[..., :3])
         # [N_rays, N_samples]
         alpha = 1.0 - torch.exp(-F.relu(raw[..., 3])*dists)
-
+        
         alpha = alpha * raw_mask[:, :, 0]                                      # [N_rays, N_samples]
         weights = alpha * torch.cumprod( torch.cat([torch.ones((alpha.shape[0], 1)).to(alpha), 1.-alpha + 1e-10], dim=-1), dim=-1)[:, :-1]
         rgb_map = torch.sum(weights[..., None] * rgb, -2)                       # [N_rays, 3]
@@ -245,7 +282,7 @@ class Network(nn.Module):
 
         rgb_map = rgb_map + (1.-acc_map[..., None]) * bgcolor[None, :]/255.
 
-        return rgb_map, acc_map, weights, depth_map
+        return rgb_map, acc_map, weights, depth_map, alpha
 
 
     @staticmethod
@@ -336,7 +373,7 @@ class Network(nn.Module):
         if cfg.perturb > 0.:
             z_vals = self._stratified_sampling(z_vals)          # dj: [N_rays=2400, nSamples=128]
 
-        pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None] # dj: [2400,128,3] (N_rays, N_samples, xyz)
+        pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None] # dj: [2400, 128, 3] (N_rays, N_samples, xyz)
 
         mv_output = self._sample_motion_fields(
             pts=pts,
@@ -350,6 +387,8 @@ class Network(nn.Module):
 
         pts_mask = mv_output['fg_likelihood_mask']
         cnl_pts = mv_output['x_skel']               # dj: [2400, 128, 3] (N_rays, N_samples, xyz)
+        
+        cnl_pts.requires_grad_()
         
         # cnl_pts: [2400, 128, 3] (N_rays, N_samples, xyz)
         # distortion loss: normalized distances s, normalized weights w 
@@ -365,8 +404,8 @@ class Network(nn.Module):
         )
         raw = query_result['raws']
         
-        rgb_map, acc_map, _, depth_map = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
-
+        rgb_map, acc_map, _, depth_map, alpha = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
+        
         return {'rgb' : rgb_map, 'alpha' : acc_map, 'depth': depth_map}
 
 
@@ -399,7 +438,7 @@ class Network(nn.Module):
             delta_Ts = pose_out.get('Ts', None)
            
             dst_Rs_no_root = dst_Rs[:, 1:, ...]
-            dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root,delta_Rs)
+            dst_Rs_no_root = self._multiply_corrected_Rs(dst_Rs_no_root, delta_Rs)
             dst_Rs = torch.cat([dst_Rs[:, 0:1, ...], dst_Rs_no_root], dim=1)
         
             if delta_Ts is not None:
@@ -443,3 +482,58 @@ class Network(nn.Module):
             all_ret[k] = torch.reshape(all_ret[k], k_shape)
 
         return all_ret
+    
+def gradient(inputs, outputs):
+    d_points = torch.ones_like(outputs, requires_grad=False, device=outputs.device)
+    points_grad = grad(
+        outputs=outputs,
+        inputs=inputs,
+        grad_outputs=d_points,
+        create_graph=True,
+        retain_graph=True,
+        only_inputs=True)[0][:, :, -3:]
+    return points_grad
+
+class rgb_net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        self.rgb_net = nn.Sequential(
+            nn.Linear(48, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 4)
+        )
+
+    def forward(self, x):
+        x = x.type(torch.FloatTensor).cuda()
+        x = self.rgb_net(x)
+        return x
+    
+class non_rigid_net(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        self.non_rigid_net = nn.Sequential(
+            nn.Linear(101, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 3),
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        x = self.non_rigid_net(x)
+        return x

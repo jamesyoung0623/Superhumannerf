@@ -11,11 +11,7 @@ class MotionWeightVolumeDecoder(nn.Module):
 
         self.total_bones = total_bones
         self.volume_size = volume_size
-        
-        from configs import cfg
-        # torch.manual_seed(cfg.train.seed) #######################
-        self.const_embedding = nn.Parameter(torch.randn(embedding_size), requires_grad=True )
-
+        self.const_embedding = nn.Parameter(torch.randn(embedding_size), requires_grad=True)
         self.decoder = ConvDecoder3D(embedding_size=embedding_size, volume_size=volume_size, voxel_channels=total_bones+1)
 
 

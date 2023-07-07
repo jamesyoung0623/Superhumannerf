@@ -17,7 +17,6 @@ from configs import cfg
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
         print('[Dataset Path]', dataset_path) 
-
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
@@ -186,11 +185,12 @@ class Dataset(torch.utils.data.Dataset):
         ## Below we determine the selected ray indices and patch valid mask
 
         sel_ray_mask = sel_ray_mask.reshape(-1)
-        inter_mask = np.bitwise_and(sel_ray_mask, ray_mask)
-        select_masked_inds = np.where(inter_mask)
+        inter_mask = np.bitwise_and(sel_ray_mask, ray_mask) # (262144,)
+        
+        select_masked_inds = np.where(inter_mask)           # (400,)
 
-        masked_indices = np.cumsum(ray_mask) - 1
-        select_inds = masked_indices[select_masked_inds]
+        masked_indices = np.cumsum(ray_mask) - 1            # (262144,)
+        select_inds = masked_indices[select_masked_inds]    # (400,)
         
         inter_mask = inter_mask.reshape(H, W)
 
@@ -233,7 +233,6 @@ class Dataset(torch.utils.data.Dataset):
         )
 
         rays_o, rays_d, ray_img, near, far = self.select_rays(select_inds, rays_o, rays_d, ray_img, near, far)
-        
         targets = []
         
         for i in range(cfg.patch.N_patches):
@@ -256,7 +255,6 @@ class Dataset(torch.utils.data.Dataset):
         
         ################################################
         if self.bgcolor is None:
-            # np.random.seed(cfg.train.seed) #######################
             bgcolor = (np.random.rand(3) * 255.).astype('float32')
         else:
             bgcolor = np.array(self.bgcolor, dtype='float32')
@@ -280,18 +278,16 @@ class Dataset(torch.utils.data.Dataset):
         R = E[:3, :3]
         T = E[:3, 3]
 
-
         rays_o, rays_d = get_rays_from_KRT(H, W, K, R, T)
         ray_img = img.reshape(-1, 3)
         rays_o = rays_o.reshape(-1, 3) # (H, W, 3) --> (N_rays, 3)
         rays_d = rays_d.reshape(-1, 3)
-
         # (selected N_samples, ), (selected N_samples, ), (N_samples, )
         near, far, ray_mask = rays_intersect_3d_bbox(dst_bbox, rays_o, rays_d)
         rays_o = rays_o[ray_mask]
         rays_d = rays_d[ray_mask]
         ray_img = ray_img[ray_mask]
-
+        
         near = near[:, None].astype('float32')
         far = far[:, None].astype('float32')
 
