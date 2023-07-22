@@ -10,6 +10,9 @@ from datetime import datetime
 import tinycudann as tcnn
 import numpy as np
 
+from torch_efficient_distloss import eff_distloss, eff_distloss_native, flatten_eff_distloss
+from dvgo import Alphas2Weights
+
 
 class Network(nn.Module):
     def __init__(self, cfg):
@@ -121,6 +124,8 @@ class Network(nn.Module):
             }
         )
 
+       
+
     def _query_mlp(self, pos_xyz, pos_dir, non_rigid_mlp_input):
         
         # (N_rays, N_samples, 3) --> (N_rays x N_samples, 3) 
@@ -183,13 +188,13 @@ class Network(nn.Module):
     def _batchify_rays(self, rays_flat, **kwargs):
         all_ret = {}
         for i in range(0, rays_flat.shape[0], self.cfg.chunk):
-            ret = self._render_rays(rays_flat[i:i+self.cfg.chunk], **kwargs)
+            ret, distloss = self._render_rays(rays_flat[i:i+self.cfg.chunk], **kwargs)
             for k in ret:
                 if k not in all_ret:
                     all_ret[k] = []
                 all_ret[k].append(ret[k])
 
-        return {k : torch.cat(all_ret[k], 0) for k in all_ret}
+        return {k : torch.cat(all_ret[k], 0) for k in all_ret}, distloss
 
     def _raw2outputs(self, raw, raw_mask, z_vals, rays_d, bgcolor=None):
         # raw: [N_rays, N_samples, 4]
@@ -315,10 +320,6 @@ class Network(nn.Module):
 
         pts_mask = mv_output['fg_likelihood_mask']
         cnl_pts = mv_output['x_skel']               # dj: [2400, 128, 3] (N_rays, N_samples, xyz)
-        
-        # cnl_pts: [2400, 128, 3] (N_rays, N_samples, xyz)
-        # distortion loss: normalized distances s, normalized weights w 
-        # distloss = self._distortion_loss(cnl_pts,)
 
         pts_dir = rays_d[..., None, :] * torch.ones_like(z_vals[..., :, None])
         # cnl_pts.shape [2400, 128, 3]
@@ -332,7 +333,34 @@ class Network(nn.Module):
         
         rgb_map, acc_map, _, depth_map, alpha = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
         
-        return {'rgb' : rgb_map, 'alpha' : acc_map, 'depth': depth_map}
+        alpha = alpha.view(-1)
+        B = alpha.size(0)//128  # number of rays
+        N = 128   # number of points on a ray
+        
+        ray_id = torch.LongTensor([[i]*128 for i in range(B)]).view(-1).cuda()
+        
+        weights, alphainv_last = Alphas2Weights.apply(alpha, ray_id, B)
+        weights = weights.view(-1, 128)
+        weights = weights.clone().requires_grad_()
+        
+        self.bg_len = 0.2
+        self.world_len = 38
+        stepsize = 0.5
+        N_inner = int(2 / (2+2*self.bg_len) * self.world_len / stepsize) + 1
+        N_outer = N_inner
+        b_inner = torch.linspace(0, 2, N_inner+1)
+        b_outer = 2 / torch.linspace(1, 1/128, N_outer+1)
+        t = torch.cat([
+            (b_inner[1:] + b_inner[:-1]) * 0.5,
+            (b_outer[1:] + b_outer[:-1]) * 0.5,
+        ])
+        t = t[None].repeat(B, 1)
+        s = 1 - 1/(1+t)  # [0, inf] => [0, 1]
+        
+        interval = 1/N
+        distloss = 0.01 * eff_distloss(weights, s.cuda(), interval)
+        
+        return {'rgb' : rgb_map, 'alpha' : acc_map, 'depth': depth_map}, distloss
 
 
     def _get_motion_base(self, dst_Rs, dst_Ts, cnl_gtfms):
@@ -341,6 +369,8 @@ class Network(nn.Module):
         return motion_scale_Rs, motion_Ts
 
     def _multiply_corrected_Rs(self, Rs, correct_Rs):
+        Rs = Rs.type(torch.HalfTensor).cuda()
+        correct_Rs = correct_Rs.type(torch.HalfTensor).cuda()
         total_bones = self.cfg.total_bones - 1
         return torch.matmul(Rs.reshape(-1, 3, 3), correct_Rs.reshape(-1, 3, 3)).reshape(-1, total_bones, 3, 3)
 
@@ -399,10 +429,10 @@ class Network(nn.Module):
         rays_d = torch.reshape(rays_d, [-1, 3]).float()
         packed_ray_infos = torch.cat([rays_o, rays_d, near, far], -1)
 
-        all_ret = self._batchify_rays(packed_ray_infos, **kwargs)
+        all_ret, distloss = self._batchify_rays(packed_ray_infos, **kwargs)
 
         for k in all_ret:
             k_shape = list(rays_shape[:-1]) + list(all_ret[k].shape[1:])
             all_ret[k] = torch.reshape(all_ret[k], k_shape)
 
-        return all_ret
+        return all_ret, distloss

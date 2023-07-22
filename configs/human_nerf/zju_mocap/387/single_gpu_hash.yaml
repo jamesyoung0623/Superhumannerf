@@ -1,8 +1,7 @@
 category: 'superhumannerf'
 task: 'zju_mocap'
 subject: 'p387'
-experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
-logdir: '../experiments/superhumannerf/zju_mocap/p387/single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_test1'
+experiment: 'single_gpu_hash_2_64_2048_2^19_dir_48_16_lrate_decay_100_0.0005_l1loss_0.2_opacloss_1_100000_N_patches_6_size_20_non_rigid_5_128_distloss_100000_test1'
 primary_gpus: [0]
 secondary_gpus: [0]
 ##############################################3
@@ -29,8 +28,8 @@ non_rigid_motion_mlp:
 pose_decoder:
   module: 'core.nets.human_nerf.pose_decoders.mlp_delta_body_pose'
   embedding_size: 69
-  mlp_width: 256
-  mlp_depth: 4
+  mlp_width: 128
+  mlp_depth: 6
   kick_in_iter: 0
 
 cnl_mlp:
@@ -69,9 +68,9 @@ train:
     mse: 0.2
     opacity: 1.0             
     l1: 0.2                 
-    psnr: 0.0   
   opacity_kick_in_iter: 100000           
-  psnr_kick_in_iter: 100000            
+  dist_kick_in_iter: 100000
+
 
 progress:
   dataset_module: 'core.data.human_nerf.train'
@@ -118,7 +117,7 @@ sex: 'neutral'
 total_bones: 24
 bbox_offset: 0.3  
 
-resume: True
+resume: False
 load_net: latest
 save_all: True
 
@@ -132,7 +131,7 @@ network:
   ignore_non_rigid_motions: False
   apply_hash_coding: True
 
-netchunk_per_gpu: 308000 # dj: [307200=2400*128] number of pts sent through network in parallel, decrease if running out of memory
+netchunk_per_gpu: 307200 # dj: [307200=2400*128] number of pts sent through network in parallel, decrease if running out of memory
 
 N_samples: 128      
 

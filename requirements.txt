@@ -21,3 +21,5 @@ gdown
 dearpygui
 tensorboard
 scikit-image
+mmcv
+torch_efficient_distloss

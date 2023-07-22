@@ -68,6 +68,9 @@ class Trainer(object):
     def __init__(self, cfg, network, optimizer):
         print('\n********** Init Trainer ***********')
         self.cfg = cfg
+        self.logdir = os.path.join('../experiments', cfg.category, cfg.task, cfg.subject, cfg.experiment)
+        os.makedirs(self.logdir, exist_ok=True)
+
         self.network = network.cuda()
 
         self.optimizer = optimizer
@@ -85,7 +88,7 @@ class Trainer(object):
         if "lpips" in self.cfg.train.lossweights.keys():
             self.lpips = LPIPS(net='vgg')
             set_requires_grad(self.lpips, requires_grad=True)
-            self.lpips = nn.DataParallel(self.lpips).cuda()
+            self.lpips = self.lpips.cuda()
 
         print("Load Progress Dataset ...")
         self.prog_dataloader = create_dataloader(self.cfg, 'progress')
@@ -93,13 +96,11 @@ class Trainer(object):
         print('************************************')
         
         self.test_loader = create_dataloader(self.cfg, 'movement')
-        log_dir = os.path.join(self.cfg.logdir, 'logs')
-        self.swriter = SummaryWriter(log_dir)
-
+        self.swriter = SummaryWriter(os.path.join(self.logdir, 'logs'))
+        
 
     def get_ckpt_path(self, name):
-        os.makedirs(self.cfg.logdir, exist_ok=True)
-        return os.path.join(self.cfg.logdir, f'{name}.tar')
+        return os.path.join(self.logdir, f'{name}.tar')
 
     def ckpt_exists(self, name):
         return os.path.exists(self.get_ckpt_path(name))
@@ -159,9 +160,6 @@ class Trainer(object):
 
         if "l1" in loss_names:
             losses["l1"] = img2l1(rgb, target)
-
-        if "psnr" in loss_names:
-            losses["psnr"] = mse2psnr(img2mse(rgb, target))[0]
         
         return losses
 
@@ -178,9 +176,6 @@ class Trainer(object):
         if self.iter < self.cfg.train.opacity_kick_in_iter:
             losses['opacity'] *= 0.0
             
-        if self.iter < self.cfg.train.psnr_kick_in_iter:
-            losses['psnr'] *= 0.0
-        
         train_losses = [ weight * losses[k] for k, weight in lossweights.items() ]
         ori_losses = [ loss for _, loss in losses.items() ]
         
@@ -239,7 +234,7 @@ class Trainer(object):
                 batch[k] = v[0]
 
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU)
-            net_output = self.network(self.iter, **data)
+            net_output, distloss = self.network(self.iter, **data)
 
             frameWeightValue = 1.0
             #if LossDistinctness: 
@@ -253,6 +248,9 @@ class Trainer(object):
                 div_indices=data['patch_div_indices'], 
                 frameWeight=frameWeightValue
             )
+            
+            if self.iter > self.cfg.train.dist_kick_in_iter:
+                train_loss += distloss
 
             train_loss.backward()
             self.optimizer.step()
@@ -320,7 +318,7 @@ class Trainer(object):
             truth = np.full((height * width, 3), np.array(self.cfg.bgcolor)/255., dtype='float32')
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
-                net_output = self.network(self.iter, **data)
+                net_output, distloss = self.network(self.iter, **data)
 
             rgb = net_output['rgb'].data.to("cpu").numpy()
             target_rgbs = batch['target_rgbs']
@@ -333,7 +331,7 @@ class Trainer(object):
 
             mse = mse_np(rendered, truth)
             psnr_tag = mse2psnr_np(mse)
-            lpips_tag = torch.mean(self.lpips(scale_for_lpips(torch.from_numpy(rendered).permute(2, 0, 1)), scale_for_lpips(torch.from_numpy(truth).permute(2, 0, 1))))*1000
+            lpips_tag = torch.mean(self.lpips(scale_for_lpips(torch.from_numpy(rendered).permute(2, 0, 1)).cuda(), scale_for_lpips(torch.from_numpy(truth).permute(2, 0, 1)).cuda()))*1000
 
             psnrls.append(psnr_tag)               
             lpipsls.append(lpips_tag.cpu().detach().numpy())               
@@ -350,7 +348,7 @@ class Trainer(object):
         
         tiled_image = tile_images(images)
         
-        Image.fromarray(tiled_image).save(os.path.join(self.cfg.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
+        Image.fromarray(tiled_image).save(os.path.join(self.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, np.mean(psnrls), np.mean(lpipsls))))
 
         if self.iter % self.cfg.progress.eval_interval == 0:
             self.eval_model(render_folder_name='eval', n=self.iter/self.cfg.progress.eval_interval)
@@ -387,7 +385,7 @@ class Trainer(object):
     
     def load_network(self, checkpoint):
         model = create_network()
-        ckpt_path = os.path.join(self.cfg.logdir, f'{checkpoint}.tar')
+        ckpt_path = os.path.join(self.logdir, f'{checkpoint}.tar')
         ckpt = torch.load(ckpt_path, map_location='cuda:0')
         model.load_state_dict(ckpt['network'], strict=False)
         print('load network from ', ckpt_path)
@@ -439,10 +437,8 @@ class Trainer(object):
         set_requires_grad(self.lpips, requires_grad=False)
 
         out_folder_name = f'iter_{self.iter}_{render_folder_name}'
-        #if os.path.isdir(os.path.join(self.cfg.logdir, out_folder_name)):
-        #    continue
         
-        self.writer = ImageWriter(output_dir=self.cfg.logdir, exp_name=out_folder_name)
+        self.writer = ImageWriter(output_dir=self.logdir, exp_name=out_folder_name)
 
         PSNRA = []
         SSIMA = []
@@ -457,7 +453,7 @@ class Trainer(object):
             # prediction
             data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
             with torch.no_grad():
-                net_output = self.network(self.iter, **data)
+                net_output, distloss = self.network(self.iter, **data)
             rgb = net_output['rgb']
             alpha = net_output['alpha']
 

@@ -47,6 +47,8 @@ class NonRigidMotionMLP(nn.Module):
         #  Linear(in_features=128, out_features=128, bias=True), 
         #  ReLU(), 
         #  Linear(in_features=128, out_features=3, bias=True)]
+        
+        
 
     def forward(self, pos_embed, pos_xyz, condition_code, viewdirs=None, **_):
         h = torch.cat([condition_code, pos_embed], dim=-1)

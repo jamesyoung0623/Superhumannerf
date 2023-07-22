@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 import tinycudann as tcnn
 from core.utils.network_util import initseq, RodriguesModule
@@ -6,6 +7,7 @@ from core.utils.network_util import initseq, RodriguesModule
 class BodyPoseRefiner(nn.Module):
     def __init__(self, cfg):
         super(BodyPoseRefiner, self).__init__()
+        self.cfg = cfg
         self.embedding_size = cfg.pose_decoder.embedding_size
         self.mlp_width = cfg.pose_decoder.mlp_width
         self.mlp_depth = cfg.pose_decoder.mlp_depth
@@ -28,12 +30,23 @@ class BodyPoseRefiner(nn.Module):
         last_layer = self.block_mlps[-1]
         last_layer.weight.data.uniform_(-init_val, init_val)
         last_layer.bias.data.zero_()
+        
+        self.pose_decoder = tcnn.Network(
+            n_input_dims=self.cfg.pose_decoder.embedding_size, n_output_dims=self.cfg.pose_decoder.embedding_size,
+            network_config={
+                "otype": "FullyFusedMLP",
+                "activation": "ReLU",
+                "output_activation": "ReLU",
+                "n_neurons": self.cfg.pose_decoder.mlp_width,
+                "n_hidden_layers": self.cfg.pose_decoder.mlp_depth
+            }
+        )
 
         self.rodriguez = RodriguesModule()
     
         
     def forward(self, pose_input):
-        rvec = self.block_mlps(pose_input).view(-1, 3)
+        #rvec = self.block_mlps(pose_input).view(-1, 3)
+        rvec = self.pose_decoder(pose_input).view(-1, 3)
         Rs = self.rodriguez(rvec).view(-1, self.total_bones, 3, 3)
-        
-        return {"Rs": Rs}
+        return {"Rs": Rs.type(torch.HalfTensor).cuda()}
