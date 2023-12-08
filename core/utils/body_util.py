@@ -264,24 +264,18 @@ def get_canonical_global_tfms(canonical_joints):
 
     for i in range(1, total_bones):
         translate = canonical_joints[i,:] - canonical_joints[SMPL_PARENT[i],:]
-        gtfms[i] = gtfms[SMPL_PARENT[i]].dot(
-                            _construct_G(np.eye(3), translate))
+        gtfms[i] = gtfms[SMPL_PARENT[i]].dot(_construct_G(np.eye(3), translate))
 
     return gtfms
 
 
-def approx_gaussian_bone_volumes(
-    tpose_joints, 
-    bbox_min_xyz, bbox_max_xyz,
-    grid_size=32):
-    r""" Compute approximated Gaussian bone volume.
-    
+def approx_gaussian_bone_volumes(tpose_joints, bbox_min_xyz, bbox_max_xyz, grid_size=32):
+    """ Compute approximated Gaussian bone volume.
     Args:
         - tpose_joints:  Array (Total_Joints, 3)
         - bbox_min_xyz:  Array (3, )
         - bbox_max_xyz:  Array (3, )
         - grid_size:     Integer
-        - has_bg_volume: boolean
 
     Returns:
         - Array (Total_Joints + 1, 3, 3, 3)

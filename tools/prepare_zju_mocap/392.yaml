@@ -1,13 +1,17 @@
 dataset:
-  # zju_mocap_path: /data/dataset/zju_mocap
-  zju_mocap_path: ../../../ZJU-Mocap # dj
+  zju_mocap_path: ../ZJU-Mocap
   subject: '392'
   sex: 'neutral'
 
 training_view: 0
 max_frames: -1
+eval_view: 1-22  # camera index, from Camera_B2 to Camera_B23 ########
+eval_skip: 30  # choose image per 30 frame while eval #################
 
 output:
-  # dir: ../../dataset/zju_mocap
-  dir: ../../../datasets/zju_mocap    # dj
+  dir: ../datasets/zju_mocap
   name: '392'
+
+eval_output:
+  dir: ../datasets/zju_mocap
+  name: '392_eval'  

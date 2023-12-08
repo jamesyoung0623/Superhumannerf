@@ -10,51 +10,52 @@ import torch.nn as nn
 ###############################################################################
 
 class ConvDecoder3D(nn.Module):
-    r""" Convolutional 3D volume decoder."""
-
-    def __init__(self, embedding_size=256, volume_size=128, voxel_channels=4):
-        r""" 
+    """ Convolutional 3D volume decoder."""
+    def __init__(self, embedding_size):
+        """ 
             Args:
                 embedding_size: integer
                 volume_size: integer
                 voxel_channels: integer
         """    
         super(ConvDecoder3D, self).__init__()
-
-        self.block_mlp = nn.Sequential(nn.Linear(embedding_size, 1024), 
-                                       nn.LeakyReLU(0.2))
-        block_conv = []
-        inchannels, outchannels = 1024, 512
-        for _ in range(int(np.log2(volume_size)) - 1):
-            block_conv.append(nn.ConvTranspose3d(inchannels, outchannels, 4, 2, 1))
-            block_conv.append(nn.LeakyReLU(0.2))
-            if inchannels == outchannels:
-                outchannels = inchannels // 2
-            else:
-                inchannels = outchannels
-        block_conv.append(nn.ConvTranspose3d(inchannels, voxel_channels, 4, 2, 1))
-        self.block_conv = nn.Sequential(*block_conv)
-
-        for m in [self.block_mlp, self.block_conv]:
-            initseq(m)
-        # self.block_conv = Sequential(
-        # (0): ConvTranspose3d(1024, 512, kernel_size=(4, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
-        # (1): LeakyReLU(negative_slope=0.2)
-        # (2): ConvTranspose3d(512, 512, kernel_size=(4, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
-        # (3): LeakyReLU(negative_slope=0.2)
-        # (4): ConvTranspose3d(512, 256, kernel_size=(4, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
-        # (5): LeakyReLU(negative_slope=0.2)
-        # (6): ConvTranspose3d(256, 256, kernel_size=(4, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
-        # (7): LeakyReLU(negative_slope=0.2)
-        # (8): ConvTranspose3d(256, 25, kernel_size=(4, 4, 4), stride=(2, 2, 2), padding=(1, 1, 1))
-        # )
+        self.block_mlp = nn.Sequential(nn.Linear(embedding_size, 1024), nn.LeakyReLU(0.2))
+        
+        self.block_conv = nn.Sequential(
+            nn.ConvTranspose3d(1024, 512, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(512, 512, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(512, 256, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(256, 256, 4, 2, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(256, 25, 4, 2, 1),            
+        )
+        """
+        self.block_conv = nn.Sequential(
+            nn.ConvTranspose3d(25, 25, 1, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(25, 25, 1, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(25, 25, 1, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(25, 25, 1, 1),
+            nn.LeakyReLU(0.2),
+            nn.ConvTranspose3d(25, 25, 1, 1)
+        )
+        """
+        initseq(self.block_mlp)
+        initseq(self.block_conv)
 
     def forward(self, embedding):
         """ 
             Args:
                 embedding: Tensor (B, N)
         """    
-        return self.block_conv(self.block_mlp(embedding).view(-1, 1024, 1, 1, 1))
+        embedding = self.block_mlp(embedding).view(1, 1024, 1, 1, 1)
+        embedding = self.block_conv(embedding)
+        return embedding
 
 
 ###############################################################################
@@ -63,7 +64,7 @@ class ConvDecoder3D(nn.Module):
 
 class RodriguesModule(nn.Module):
     def forward(self, rvec):
-        r''' Apply Rodriguez formula on a batch of rotation vectors.
+        ''' Apply Rodriguez formula on a batch of rotation vectors.
 
             Args:
                 rvec: Tensor (B, 3)

@@ -1,8 +1,9 @@
 import os
-import pickle
-
-import numpy as np
 import cv2
+import pickle
+import numpy as np
+from PIL import Image
+
 import torch
 import torch.utils.data
 
@@ -32,7 +33,7 @@ class Dataset(torch.utils.data.Dataset):
 
         self.cameras = self.load_train_cameras()
         self.mesh_infos = self.load_train_mesh_infos()
-        self.motionCLIP = self.load_train_motionCLIP()
+        #self.motionCLIP = self.load_train_motionCLIP()
 
         frame_list = self.load_train_frames()
         self.frame_list = frame_list[::skip]
@@ -60,11 +61,11 @@ class Dataset(torch.utils.data.Dataset):
             cameras = pickle.load(f)
         return cameras
 
-    def load_train_motionCLIP(self):
-        motionCLIP = None
-        with open(os.path.join(self.dataset_path, self.cfg.motionCLIP.encoded_feats), 'rb') as f: 
-            motionCLIP = pickle.load(f) 
-        return motionCLIP.cpu().detach().numpy()
+    # def load_train_motionCLIP(self):
+    #     motionCLIP = None
+    #     with open(os.path.join(self.dataset_path, self.cfg.motionCLIP.encoded_feats), 'rb') as f: 
+    #         motionCLIP = pickle.load(f) 
+    #     return motionCLIP.cpu().detach().numpy()
     
     def skeleton_to_bbox(self, skeleton):
         min_xyz = np.min(skeleton, axis=0) - self.cfg.bbox_offset
@@ -93,7 +94,7 @@ class Dataset(torch.utils.data.Dataset):
             'dst_tpose_joints': self.mesh_infos[frame_name]['tpose_joints'].astype('float32'),
             'bbox': self.mesh_infos[frame_name]['bbox'].copy(),
             'Rh': self.mesh_infos[frame_name]['Rh'].astype('float32'),
-            'Th': self.mesh_infos[frame_name]['Th'].astype('float32')
+            'Th': self.mesh_infos[frame_name]['Th'].astype('float32'),
         }
 
     def select_rays(self, select_inds, rays_o, rays_d, ray_img, near, far):
@@ -104,14 +105,11 @@ class Dataset(torch.utils.data.Dataset):
         far = far[select_inds]
         return rays_o, rays_d, ray_img, near, far
     
-    def get_patch_ray_indices(self, N_patch, ray_mask, subject_mask, bbox_mask, patch_size, H, W):
+    def get_patch_ray_indices(self, frame_name, ray_mask, subject_mask, bbox_mask, H, W):
         assert subject_mask.dtype == np.bool
         assert bbox_mask.dtype == np.bool
 
-        bbox_exclude_subject_mask = np.bitwise_and(
-            bbox_mask,
-            np.bitwise_not(subject_mask)
-        )
+        bbox_exclude_subject_mask = np.bitwise_and(bbox_mask, np.bitwise_not(subject_mask))
 
         list_ray_indices = []
         list_mask = []
@@ -120,17 +118,16 @@ class Dataset(torch.utils.data.Dataset):
 
         total_rays = 0
         patch_div_indices = [total_rays]
-        for _ in range(N_patch):
+        for _ in range(self.cfg.patch.N_patches):
             # let p = self.cfg.patch.sample_subject_ratio
             # prob p: we sample on subject area
             # prob (1-p): we sample on non-subject area but still in bbox
-            # np.random.seed(self.cfg.train.seed) #######################
             if np.random.rand(1)[0] < self.cfg.patch.sample_subject_ratio:
                 candidate_mask = subject_mask
             else:
                 candidate_mask = bbox_exclude_subject_mask
 
-            ray_indices, mask, xy_min, xy_max = self._get_patch_ray_indices(ray_mask, candidate_mask, patch_size, H, W)
+            ray_indices, mask, xy_min, xy_max = self._get_patch_ray_indices(frame_name, ray_mask, candidate_mask, H, W)
 
             assert len(ray_indices.shape) == 1
             total_rays += len(ray_indices)
@@ -153,27 +150,35 @@ class Dataset(torch.utils.data.Dataset):
         return select_inds, patch_info, patch_div_indices
 
 
-    def _get_patch_ray_indices(self, ray_mask, candidate_mask, patch_size, H, W):
-
+    def _get_patch_ray_indices(self, frame_name, ray_mask, candidate_mask, H, W):
         assert len(ray_mask.shape) == 1
         assert ray_mask.dtype == np.bool
         assert candidate_mask.dtype == np.bool
-
+        
         valid_ys, valid_xs = np.where(candidate_mask)
+                
+        mse_map_path = './mse_map/{}.jpg'.format(frame_name)
+        
+        if os.path.isfile(mse_map_path):
+            mse_map = cv2.imread(mse_map_path, cv2.IMREAD_GRAYSCALE)
+            mse_map = mse_map[candidate_mask==1]
+            mse_map = mse_map + mse_map.mean()
+            mse_map_norm = mse_map/mse_map.sum()
+            select_idx = np.random.choice(valid_ys.shape[0], p=mse_map_norm, size=[1], replace=False)[0]
+        else:
+            select_idx = np.random.choice(valid_ys.shape[0], size=[1], replace=False)[0]
 
         # determine patch center
         ####################################
-        # np.random.seed(self.cfg.train.seed) #######################
-        select_idx = np.random.choice(valid_ys.shape[0], size=[1], replace=False)[0]
         center_x = valid_xs[select_idx]
         center_y = valid_ys[select_idx]
 
         # determine patch boundary
-        half_patch_size = patch_size // 2
-        x_min = np.clip(a=center_x-half_patch_size, a_min=0, a_max=W-patch_size)
-        x_max = x_min + patch_size
-        y_min = np.clip(a=center_y-half_patch_size, a_min=0, a_max=H-patch_size)
-        y_max = y_min + patch_size
+        half_patch_size = self.cfg.patch.size // 2
+        x_min = np.clip(a=center_x-half_patch_size, a_min=0, a_max=W-self.cfg.patch.size)
+        x_max = x_min + self.cfg.patch.size
+        y_min = np.clip(a=center_y-half_patch_size, a_min=0, a_max=H-self.cfg.patch.size)
+        y_max = y_min + self.cfg.patch.size
 
         sel_ray_mask = np.zeros_like(candidate_mask)
         sel_ray_mask[y_min:y_max, x_min:x_max] = True
@@ -218,30 +223,32 @@ class Dataset(torch.utils.data.Dataset):
     def get_total_frames(self):
         return len(self.frame_list)
 
-    def sample_patch_rays(self, img, H, W, subject_mask, bbox_mask, ray_mask, rays_o, rays_d, ray_img, near, far):
+    def sample_patch_rays(self, img, frame_name, H, W, subject_mask, bbox_mask, ray_mask, rays_o, rays_d, ray_img, near, far):
 
         select_inds, patch_info, patch_div_indices = self.get_patch_ray_indices(
-            N_patch=self.cfg.patch.N_patches, 
+            frame_name=frame_name,
             ray_mask=ray_mask, 
             subject_mask=subject_mask, 
             bbox_mask=bbox_mask,
-            patch_size=self.cfg.patch.size, 
             H=H, W=W
         )
 
         rays_o, rays_d, ray_img, near, far = self.select_rays(select_inds, rays_o, rays_d, ray_img, near, far)
         targets = []
         
+        coords = []
+        
         for i in range(self.cfg.patch.N_patches):
             x_min, y_min = patch_info['xy_min'][i] 
             x_max, y_max = patch_info['xy_max'][i]
             targets.append(img[y_min:y_max, x_min:x_max])
-        
+            coords.append([x_min, x_max, y_min, y_max])
+
         target_patches = np.stack(targets, axis=0) # (N_patches, P, P, 3)
 
         patch_masks = patch_info['mask']  # boolean array (N_patches, P, P)
 
-        return rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices
+        return rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices, coords
 
     def __len__(self):
         return self.get_total_frames()
@@ -250,9 +257,7 @@ class Dataset(torch.utils.data.Dataset):
         frame_name = self.frame_list[idx]
         results = {'frame_name': frame_name}
         
-        ################################################
         if self.bgcolor is None:
-            # np.random.seed(self.cfg.train.seed) #######################
             bgcolor = (np.random.rand(3) * 255.).astype('float32')
         else:
             bgcolor = np.array(self.bgcolor, dtype='float32')
@@ -277,11 +282,13 @@ class Dataset(torch.utils.data.Dataset):
         T = E[:3, 3]
 
         rays_o, rays_d = get_rays_from_KRT(H, W, K, R, T)
+        
         ray_img = img.reshape(-1, 3)
-        rays_o = rays_o.reshape(-1, 3) # (H, W, 3) --> (N_rays, 3)
+        rays_o = rays_o.reshape(-1, 3)
         rays_d = rays_d.reshape(-1, 3)
         # (selected N_samples, ), (selected N_samples, ), (N_samples, )
         near, far, ray_mask = rays_intersect_3d_bbox(dst_bbox, rays_o, rays_d)
+
         rays_o = rays_o[ray_mask]
         rays_d = rays_d[ray_mask]
         ray_img = ray_img[ray_mask]
@@ -292,8 +299,11 @@ class Dataset(torch.utils.data.Dataset):
         if self.ray_shoot_mode == 'image':
             pass
         elif self.ray_shoot_mode == 'patch':
-            rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices = self.sample_patch_rays(
-                img=img, H=H, W=W,
+            rays_o, rays_d, ray_img, near, far, target_patches, patch_masks, patch_div_indices, coords = \
+                self.sample_patch_rays(
+                img=img, 
+                frame_name=frame_name, 
+                H=H, W=W,
                 subject_mask=alpha[:, :, 0] > 0.,
                 bbox_mask=ray_mask.reshape(H, W),
                 ray_mask=ray_mask,
@@ -303,11 +313,12 @@ class Dataset(torch.utils.data.Dataset):
                 near=near, 
                 far=far
             )
+            results['coords'] = [coords]
+            results['subject_mask'] = alpha
         else:
             assert False, f"Invalid Ray Shoot Mode: {self.ray_shoot_mode}"
 
         batch_rays = np.stack([rays_o, rays_d], axis=0)
-
         
         if 'rays' in self.keyfilter:
             results['img_width'] = W
@@ -351,11 +362,5 @@ class Dataset(torch.utils.data.Dataset):
             # 2. add a small value to avoid all zeros
             dst_posevec_69 = dst_poses[3:] + 1e-2
             results['dst_posevec'] = dst_posevec_69
-
-        if 'motionCLIP' in self.keyfilter:
-            # results['motionCLIP'] = self.motionCLIP
-            
-            results['motionCLIP'] = self.motionCLIP,
-            results['framelist'] = self.frame_list,
 
         return results

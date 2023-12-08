@@ -134,14 +134,19 @@ def get_rays_from_KRT(H, W, K, R, T):
     """
     # calculate the camera origin
     rays_o = -np.dot(R.T, T).ravel()
+    
     # calculate the world coodinates of pixels
     i, j = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32), indexing='xy')
+
     xy1 = np.stack([i, j, np.ones_like(i)], axis=2)
+
     pixel_camera = np.dot(xy1, np.linalg.inv(K).T)
     pixel_world = np.dot(pixel_camera - T.ravel(), R)
+    
     # calculate the ray direction
     rays_d = pixel_world - rays_o[None, None]
     rays_o = np.broadcast_to(rays_o, rays_d.shape)
+
     return rays_o, rays_d
 
 
@@ -162,7 +167,9 @@ def rays_intersect_3d_bbox(bounds, ray_o, ray_d):
     assert bounds.shape == (2, 3)
 
     bounds = bounds + np.array([-0.01, 0.01])[:, None]
+
     nominator = bounds[None] - ray_o[:, None] # (N_rays, 2, 3)
+
     # calculate the step of intersections at six planes of the 3d bounding box
     ray_d[np.abs(ray_d) < 1e-5] = 1e-5
     d_intersect = (nominator / ray_d[:, None]).reshape(-1, 6) # (N_rays, 6)
@@ -179,8 +186,7 @@ def rays_intersect_3d_bbox(bounds, ray_o, ray_d):
                     (p_intersect[..., 2] <= (max_z + eps))  # (N_rays, 6)
     # obtain the intersections of rays which intersect exactly twice
     mask_at_box = p_mask_at_box.sum(-1) == 2  #(N_rays, )
-    p_intervals = p_intersect[mask_at_box][p_mask_at_box[mask_at_box]].reshape(
-        -1, 2, 3) # (N_VALID_rays, 2, 3)
+    p_intervals = p_intersect[mask_at_box][p_mask_at_box[mask_at_box]].reshape(-1, 2, 3) # (N_VALID_rays, 2, 3)
 
     # calculate the step of intersections
     ray_o = ray_o[mask_at_box]

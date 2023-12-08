@@ -13,9 +13,9 @@ Create and activate a virtual environment.
     conda create --name superhumannerf python=3.8
     conda activate superhumannerf
 
-Install pytorch with cuda11.6
+Install pytorch with cuda11.7
 
-    pip install torch==1.12.1+cu116 torchvision==0.13.1+cu116 torchaudio==0.12.1 --extra-index-url https://download.pytorch.org/whl/cu116
+    pip install torch==1.13.0+cu117 torchvision==0.14.0+cu117 torchaudio==0.13.0 --extra-index-url https://download.pytorch.org/whl/cu117
 
 Install the required packages.
 
@@ -23,12 +23,16 @@ Install the required packages.
 
 Make sure cuda version is right
 
-    export LD_LIBRARY_PATH=/usr/local/cuda-11.6/lib64:$LD_LIBRARY_PATH
-    export PATH=/usr/local/cuda-11.6/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64:$LD_LIBRARY_PATH
+    export PATH=/usr/local/cuda-11.7/bin:$PATH
 
 Install tinycudann
 
     pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
+
+Install torch-scatter
+
+    pip install torch-scatter -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
 
 
 ### `Download SMPL model`

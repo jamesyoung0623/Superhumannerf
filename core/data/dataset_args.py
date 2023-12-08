@@ -15,7 +15,7 @@ class DatasetArgs(object):
                     },
                     f"zju_{sub}_test": {
                         # "dataset_path": f"dataset/zju_mocap/{sub}",
-                        # "dataset_path": f"../datasets/zju_mocap/{sub}", # dj
+                        #"dataset_path": f"../datasets/zju_mocap/{sub}", # dj
                         "dataset_path": f"../datasets/zju_mocap/{sub}_eval", # dj for evaluation/progress
                         "keyfilter": cfg.test_keyfilter,
                         "ray_shoot_mode": 'image',
@@ -41,16 +41,15 @@ class DatasetArgs(object):
                     },
                 })
 
-
-        if cfg.category == 'superhumannerf' and cfg.task == 'wild': # dj
+        if cfg.category == 'superhumannerf' and cfg.task == 'wild':
             self.dataset_attrs.update({
-                "monocular_train": {
-                    "dataset_path": 'dataset/wild/monocular',
+                "wild_pitching_train": {
+                    "dataset_path": '../datasets/wild/pitching',
                     "keyfilter": cfg.train_keyfilter,
                     "ray_shoot_mode": cfg.train.ray_shoot_mode,
                 },
-                "monocular_test": {
-                    "dataset_path": 'dataset/wild/monocular',  
+                "wild_pitching_test": {
+                    "dataset_path": '../datasets/wild/pitching',  
                     "keyfilter": cfg.test_keyfilter,
                     "ray_shoot_mode": 'image',
                     "src_type": 'wild'

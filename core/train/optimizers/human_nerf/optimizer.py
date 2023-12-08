@@ -20,15 +20,12 @@ def get_optimizer(cfg, network):
         is_assigned_lr = False
         for lr_name in cus_lr_names:
             if lr_name in key:
-                params += [{"params": [value], 
-                            "lr": cfg.train[f'lr_{lr_name}'],
-                            "name": lr_name}]
+                params += [{"params": [value], "lr": cfg.train[f'lr_{lr_name}'], "name": lr_name}]
                 print(f"{key}: lr = {cfg.train[f'lr_{lr_name}']}")
                 is_assigned_lr = True
 
         if not is_assigned_lr:
-            params += [{"params": [value], 
-                        "name": key}]
+            params += [{"params": [value], "name": key}]
             print(f"{key}: lr = {cfg.train.lr}")
 
     print('\n******************************************\n\n')

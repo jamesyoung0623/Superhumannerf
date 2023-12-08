@@ -13,7 +13,6 @@ def _query_dataset(cfg, data_type):
     module_path = module.replace(".", "/") + ".py"
     return imp.load_source(module, module_path).Dataset
 
-
 def _get_total_train_imgs(dataset_path):
     train_img_paths = list_files(os.path.join(dataset_path, 'images'), exts=['.png'])
     return len(train_img_paths)
