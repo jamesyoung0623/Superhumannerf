@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from core.utils.network_util import ConvDecoder3D
-import time 
 
 class MotionWeightVolumeDecoder(nn.Module):
     def __init__(self, cfg):

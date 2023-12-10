@@ -54,11 +54,11 @@ train:
   log_interval: 10          
   lossweights:
     lpips: 1.0
-    mse: 0.2
+    rgb_loss: 0.2
     opacity: 1.0             
-    l1: 0.2  
-    tvloss_rgb: 0.0           
-    #tvloss_sigma: 1.0           
+    # l1: 0.2  
+    # tvloss_rgb: 0.0           
+    # tvloss_sigma: 1.0           
   opacity_kick_in_iter: 10000         
 
 progress:

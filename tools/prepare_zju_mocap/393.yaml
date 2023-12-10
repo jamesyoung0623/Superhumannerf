@@ -1,5 +1,5 @@
 dataset:
-  zju_mocap_path: ../ZJU-Mocap
+  zju_mocap_path: ../../djchen/PROJECTS/HumanNeRF/ZJU-Mocap/
   subject: '393'
   sex: 'neutral'
 

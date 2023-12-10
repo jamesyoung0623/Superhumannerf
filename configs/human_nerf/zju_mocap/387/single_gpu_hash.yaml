@@ -54,12 +54,12 @@ train:
   log_interval: 10          
   lossweights:
     lpips: 1.0
-    mse: 0.2
-    opacity: 1.0             
-    l1: 0.2  
-    tvloss_rgb: 0.0           
-    #tvloss_sigma: 1.0           
-  opacity_kick_in_iter: 10000          
+    rgb_loss: 0.5
+    opacity: 0.1             
+    mask_loss: 0.2
+    tvloss_rgb: 0.2           
+    tvloss_sigma: 0.2           
+  opacity_kick_in_iter: 5000          
 
 progress:
   dataset_module: 'core.data.human_nerf.train'
@@ -92,7 +92,7 @@ tpose:
   shuffle: False
   drop_last: False
 
-bgcolor: [255., 255., 255.]
+bgcolor: [0., 0., 0.]
 
 ##############################################
 ## EXPERIMENTS CONFIGURATIONS
@@ -107,14 +107,14 @@ total_bones: 24
 bbox_offset: 0.3  
 
 resume: True
-load_net: iter_106600
+load_net: latest
 save_all: True
-eval_iter: 200000
+eval_iter: 10000
 
 patch:
   sample_subject_ratio: 1.0
   N_patches: 8       
-  size: 32         
+  size: 64        
 
 network:
   ignore_pose_correction: True

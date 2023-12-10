@@ -2,7 +2,6 @@ import os
 import cv2
 import pickle
 import numpy as np
-from PIL import Image
 
 import torch
 import torch.utils.data
@@ -33,7 +32,6 @@ class Dataset(torch.utils.data.Dataset):
 
         self.cameras = self.load_train_cameras()
         self.mesh_infos = self.load_train_mesh_infos()
-        #self.motionCLIP = self.load_train_motionCLIP()
 
         frame_list = self.load_train_frames()
         self.frame_list = frame_list[::skip]

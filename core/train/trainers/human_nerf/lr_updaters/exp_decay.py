@@ -1,4 +1,3 @@
-
 def get_customized_lr_names():
     return [k[3:] for k in cfg.train.keys() if k.startswith('lr_')]
 

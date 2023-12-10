@@ -1,7 +1,6 @@
 import os
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from PIL import Image
@@ -15,26 +14,18 @@ from core.utils.network_util import set_requires_grad
 from core.utils.train_util import cpu_data_to_gpu, Timer
 from core.utils.image_util import tile_images, to_8b_image
 
-from datetime import datetime
-
-import skimage
-
 from core.nets import create_network
 from core.utils.image_util import ImageWriter, to_8b_image, to_8b3ch_image
 
 from torch.utils.tensorboard import SummaryWriter
 
-import glob
-import yaml
+from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+from skimage.metrics import structural_similarity as compare_ssim
 
 img2mse = lambda x, y : torch.mean((x - y) ** 2)
 img2l1 = lambda x, y : torch.mean(torch.abs(x-y))
-mse2psnr = lambda x : -10. * torch.log(x) / torch.log(torch.Tensor([10.]).to(x.device)) 
-mse_np = lambda x, y : np.mean((x - y) ** 2)                                             
-mse2psnr_np = lambda x : -10. * np.log(x) / np.log(10.)                                  
 
 EXCLUDE_KEYS_TO_GPU = ['frame_name', 'img_width', 'img_height', 'ray_mask', 'framelist', 'coords']
-
 
 def _unpack_imgs(rgbs, patch_masks, bgcolor, targets, div_indices):
     N_patch = len(div_indices) - 1
@@ -48,15 +39,43 @@ def _unpack_imgs(rgbs, patch_masks, bgcolor, targets, div_indices):
 
     return patch_imgs
 
-
-def _unpack_T_sum(T_sum, patch_masks, div_indices):
+def _unpack_weights(weights, patch_masks, div_indices):
     N_patch = len(div_indices) - 1
 
-    patch_T_sum = torch.zeros_like(patch_masks, dtype=T_sum.dtype) # (N_patch, H, W)
+    patch_weights = torch.zeros((patch_masks.shape[0], patch_masks.shape[1], patch_masks.shape[2], 128), dtype=weights.dtype).cuda() # (N_patch, H, W)
     for i in range(N_patch):
-        patch_T_sum[i, patch_masks[i]] = T_sum[div_indices[i]:div_indices[i+1]]
+        patch_weights[i, patch_masks[i]] = weights[div_indices[i]:div_indices[i+1]]
 
-    return patch_T_sum
+    return patch_weights
+
+def _unpack_weights_sum(weights_sum, patch_masks, div_indices):
+    N_patch = len(div_indices) - 1
+
+    patch_weights_sum = torch.zeros_like(patch_masks, dtype=weights_sum.dtype) # (N_patch, H, W)
+    for i in range(N_patch):
+        patch_weights_sum[i, patch_masks[i]] = weights_sum[div_indices[i]:div_indices[i+1]]
+
+    return patch_weights_sum
+
+def _unpack_alpha(alpha, patch_masks, div_indices):
+    N_patch = patch_masks.size(0)
+    patch_size = patch_masks.size(1)
+
+    patch_alpha = torch.zeros((N_patch, patch_size, patch_size, 128), dtype=alpha.dtype).cuda()
+    for i in range(N_patch):
+        patch_alpha[i, patch_masks[i]] = alpha[div_indices[i]:div_indices[i+1]]
+
+    return patch_alpha
+
+def _unpack_sigma(sigma, patch_masks, div_indices):
+    N_patch = patch_masks.size(0)
+    patch_size = patch_masks.size(1)
+
+    patch_sigma = torch.zeros((N_patch, patch_size, patch_size, 128), dtype=sigma.dtype).cuda()
+    for i in range(N_patch):
+        patch_sigma[i, patch_masks[i]] = sigma[div_indices[i]:div_indices[i+1]]
+
+    return patch_sigma
 
 
 def scale_for_lpips(image_tensor):
@@ -110,29 +129,33 @@ class Trainer(object):
     ######################################################
     ## Training 
     
-    def get_img_rebuild_loss(self, loss_names, targets, rgb, T_sum, sigma, patch_masks):
+    def get_img_rebuild_loss(self, loss_names, targets, rgb, weights, weights_sum, alpha, sigma, patch_masks):
+        alpha_sum = torch.sum(alpha, dim=3)
         losses = {}
+        
         if 'lpips' in loss_names:
             lpips_loss = self.lpips(scale_for_lpips(rgb.permute(0, 3, 1, 2)), scale_for_lpips(targets.permute(0, 3, 1, 2)))
             losses['lpips'] = torch.mean(lpips_loss)
         
-        if 'mse' in loss_names:
-            losses['mse'] = img2mse(rgb, targets)
+        if 'rgb_loss' in loss_names:
+            losses['rgb_loss'] = img2mse(rgb, targets)
+
+        if 'mask_loss' in loss_names:
+            losses['mask_loss'] = torch.mean(((torch.flatten(weights_sum) - torch.flatten(torch.ones_like(weights_sum))) ** 2) * torch.flatten(patch_masks.float()))
 
         if 'opacity' in loss_names:
             epsilon = torch.tensor(1e-1)
             constant = torch.log(epsilon) + torch.log(1+epsilon)
 
-            losses['opacity'] = torch.mean(torch.log(F.relu(torch.flatten(T_sum)) + epsilon) + torch.log(F.relu(1.0 - torch.flatten(T_sum)) + epsilon) - constant, dim=-1)
-            # lossBCE = -torch.mean( torch.mul( F.relu(torch.flatten(alpha)), torch.log(F.relu(torch.flatten(alpha))) ) + torch.mul( F.relu(1.-torch.flatten(alpha)), torch.log(F.relu(1.-torch.flatten(alpha))) ), dim=-1 )
+            losses['opacity'] = torch.mean(torch.log(F.relu(torch.flatten(weights)) + epsilon) + torch.log(F.relu(1.0 - torch.flatten(weights)) + epsilon) - constant, dim=-1)
+            losses['opacity'] += torch.mean(torch.log(F.relu(torch.flatten(weights_sum)) + epsilon) + torch.log(F.relu(1.0 - torch.flatten(weights_sum)) + epsilon) - constant, dim=-1)
+            #losses['opacity'] = torch.mean(torch.log(F.relu(torch.flatten(alpha_sum)) + epsilon) + torch.log(F.relu(1.0 - torch.flatten(alpha_sum)) + epsilon) - constant, dim=-1)
+
+            #losses['opacity'] = torch.mean(-torch.log(torch.exp(-torch.abs(torch.flatten(weights))) + torch.exp(-torch.abs(1.0 - torch.flatten(weights)))))
+            #losses['opacity'] += torch.mean(-torch.log(torch.exp(-torch.abs(torch.flatten(weights_sum))) + torch.exp(-torch.abs(1.0 - torch.flatten(weights_sum)))))
+            #losses['opacity'] = torch.mean(-torch.log(torch.exp(-torch.abs(torch.flatten(alpha_sum))) + torch.exp(-torch.abs(1.0 - torch.flatten(alpha_sum)))))
             
-            # loss = nn.BCELoss()
-            # lossBCE = loss( torch.flatten(alpha), torch.flatten(patch_masks.float()) )
-
-
-        if 'l1' in loss_names:
-            losses['l1'] = img2l1(rgb, targets)
-
+            
         def tvloss(x):
             batch_size = x.size()[0]
             h_x = x.size()[2]
@@ -147,11 +170,8 @@ class Trainer(object):
         if 'tvloss_rgb' in loss_names:
             losses['tvloss_rgb'] = tvloss(rgb)
 
-        #if 'tvloss_sigma' in loss_names:
-        #    print(sigma[:, None, ...].size())
-        #    losses['tvloss_sigma'] = tvloss(sigma)
-        #    print(losses['tvloss_sigma'])
-        #    exit()
+        if 'tvloss_sigma' in loss_names:
+            losses['tvloss_sigma'] = tvloss(weights_sum[:, None, ...])
 
         return losses
 
@@ -162,12 +182,15 @@ class Trainer(object):
 
         rgb = net_output['rgb']
         depth = net_output['depth']  
-        T = net_output['T']
-        T_sum = net_output['T_sum']
+        weights = net_output['weights']
+        weights_sum = net_output['weights_sum']
         alpha = net_output['alpha']  
         sigma = net_output['sigma']  
 
-        unpacked_T_sum = _unpack_T_sum(T_sum, patch_masks, div_indices)
+        unpacked_weights = _unpack_weights(weights, patch_masks, div_indices)
+        unpacked_weights_sum = _unpack_weights_sum(weights_sum, patch_masks, div_indices)
+        unpacked_alpha = _unpack_alpha(alpha, patch_masks, div_indices)
+        unpacked_sigma = _unpack_sigma(sigma, patch_masks, div_indices)
         unpacked_imgs = _unpack_imgs(rgb, patch_masks, bgcolor, targets, div_indices)
         
         mse_patches = np.sum(((targets - unpacked_imgs) ** 2).cpu().detach().numpy(), axis=3)
@@ -181,8 +204,7 @@ class Trainer(object):
             return mse_map_norm
         
         mse_map_norm = norm(self.mse_map_dict[frame_name])
-
-        losses = self.get_img_rebuild_loss(loss_names, targets, unpacked_imgs, unpacked_T_sum, sigma, patch_masks)
+        losses = self.get_img_rebuild_loss(loss_names, targets, unpacked_imgs, unpacked_weights, unpacked_weights_sum, unpacked_alpha, unpacked_sigma, patch_masks)
 
         if self.iter < self.cfg.train.opacity_kick_in_iter:
             losses['opacity'] *= 0.0
@@ -245,7 +267,6 @@ class Trainer(object):
             dst.paste(im1, (0, 0))
             dst.paste(im2, (im1.width, 0))
             dst.save('ray_sample.jpg')
-            #im2.save('./mse_map/{}.jpg'.format(batch['frame_name']))
 
             # ori_loss_dict['distloss'] = distloss
             # train_loss += distloss
@@ -300,6 +321,7 @@ class Trainer(object):
 
         images = []
         psnrls = []
+        ssimls = []
         lpipsls = []
 
         for _, batch in enumerate(tqdm(self.prog_dataloader)):
@@ -326,12 +348,12 @@ class Trainer(object):
             truth = truth.reshape((height, width, -1))               
             rendered = rendered.reshape((height, width, -1))   
 
-            mse = mse_np(rendered, truth)
-
-            psnr_tag = mse2psnr_np(mse)
+            psnr_tag = compare_psnr(rendered, truth, data_range=1)
+            ssim_tag = compare_ssim(rendered, truth, data_range=1, channel_axis=2)
             lpips_tag = torch.mean(self.lpips(scale_for_lpips(torch.from_numpy(rendered).permute(2, 0, 1)).cuda(), scale_for_lpips(torch.from_numpy(truth).permute(2, 0, 1)).cuda()))*1000
 
             psnrls.append(psnr_tag)               
+            ssimls.append(ssim_tag)               
             lpipsls.append(lpips_tag.cpu().detach().numpy())               
             
             truth = to_8b_image(truth)                               
@@ -346,10 +368,12 @@ class Trainer(object):
         
         tiled_image = tile_images(images)
         psnr_mean = np.mean(psnrls)
+        ssim_mean = np.mean(ssimls)
         lpips_mean = np.mean(lpipsls)
         
-        Image.fromarray(tiled_image).save(os.path.join(self.logdir, "iter[{:06}]_psnr[{:.2f}]_lpips[{:.2f}].jpg".format(self.iter, psnr_mean, lpips_mean)))
+        Image.fromarray(tiled_image).save(os.path.join(self.logdir, "iter[{:06}]_psnr[{:.2f}]_ssim[{:.4f}]_lpips[{:.2f}].jpg".format(self.iter, psnr_mean, ssim_mean, lpips_mean)))
         self.swriter.add_scalar('PSNR', psnr_mean, self.iter//self.cfg.progress.progress_interval)
+        self.swriter.add_scalar('SSIM', ssim_mean, self.iter//self.cfg.progress.progress_interval)
         self.swriter.add_scalar('LPIPS', lpips_mean, self.iter//self.cfg.progress.progress_interval)
 
         #if self.iter % self.cfg.progress.eval_interval == 0:
@@ -410,19 +434,6 @@ class Trainer(object):
 
         return rgb_image, alpha_image, truth_image
 
-    def psnr_metric(self, img_pred, img_gt):
-        ''' Calculate psnr metric
-            Args:
-                img_pred: ndarray, W*H*3, range 0-1
-                img_gt: ndarray, W*H*3, range 0-1
-
-            Returns:
-                psnr metric: scalar
-        '''
-        mse = np.mean((img_pred - img_gt) ** 2)
-        psnr = -10 * np.log(mse) / np.log(10)
-        return psnr.item()
-
     def lpips_metric(self, model, pred, target):
         # convert range from 0-1 to -1-1
         processed_pred = torch.from_numpy(pred).float().unsqueeze(0).cuda() * 2. - 1.
@@ -468,8 +479,8 @@ class Trainer(object):
             rgb_img_norm = rgb_img / 255.
             truth_img_norm = truth_img / 255.
 
-            psnr = self.psnr_metric(rgb_img_norm, truth_img_norm)
-            ssim = skimage.metrics.structural_similarity(rgb_img_norm, truth_img_norm, data_range=1, channel_axis=2)
+            psnr = compare_psnr(rgb_img_norm, truth_img_norm)
+            ssim = compare_ssim(rgb_img_norm, truth_img_norm, data_range=1, channel_axis=2)
             lpips = self.lpips_metric(model=self.lpips, pred=rgb_img_norm, target=truth_img_norm)
             print(f"Checkpoint [iter_{self.iter}] - {idx}/{len(self.test_loader)}: PSNR is {psnr:.4f}, SSIM is {ssim:.4f}, LPIPS is {lpips*1000:.4f}")
 

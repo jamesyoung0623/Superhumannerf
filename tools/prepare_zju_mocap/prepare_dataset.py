@@ -1,6 +1,5 @@
 import os
 import sys
-import glob
 
 from shutil import copyfile
 
@@ -24,11 +23,11 @@ FLAGS = flags.FLAGS
 
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/313.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/315.yaml', 'the path of config file')
-flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/377.yaml', 'the path of config file')
+# flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/377.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/386.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/387.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/390.yaml', 'the path of config file')
-# flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/392.yaml', 'the path of config file')
+flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/392.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/393.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/394.yaml', 'the path of config file')
 
@@ -117,15 +116,12 @@ def main(argv):
     # copy config file
     copyfile(FLAGS.cfg, os.path.join(output_path_train, 'config.yaml'))
 
-    easymocap_smpl_path = '../EasyMocap/output/sv1p/smpl/{}/*'.format(subject)
-    easymocap_smpl_files = sorted(glob.glob(easymocap_smpl_path))
-
     cameras = {}
     mesh_infos = {}
     all_betas = []
     all_poses = []
     for idx, ipath in enumerate(tqdm(img_paths)):
-        out_name = 'frame_{:04d}'.format(idx)
+        out_name = 'frame_{:06d}'.format(idx)
 
         img_path = os.path.join(subject_dir, ipath)
     
@@ -147,14 +143,6 @@ def main(argv):
         Rh = smpl_params['Rh'][0]  #(3,)
         Th = smpl_params['Th'][0]  #(3,)
 
-        easymocap_smpl_file = open(easymocap_smpl_files[idx])
-        easymocap_smpl_json = json.load(easymocap_smpl_file)
-
-        easymocap_betas = np.array(easymocap_smpl_json[0]['shapes'][0]) #(10,)
-        easymocap_poses = np.array([0.0, 0.0, 0.0] + easymocap_smpl_json[0]['poses'][0])  #(72,)
-        easymocap_Rh = np.array(easymocap_smpl_json[0]['Rh'][0])  #(3,)
-        easymocap_Th = np.array(easymocap_smpl_json[0]['Th'][0])  #(3,)
-
         all_betas.append(betas)
 
         # write camera info
@@ -171,15 +159,10 @@ def main(argv):
             'Rh': Rh,
             'Th': Th,
             'poses': poses,
-            'easymocap_Rh': easymocap_Rh,
-            'easymocap_Th': easymocap_Th,
-            'easymocap_poses': easymocap_poses,
             'joints': joints, 
             'tpose_joints': tpose_joints
         }
 
-        # dj: save motionCLIP encoded motions ####################
-        # breakpoint()
         all_poses.append(poses)
 
         # load and write mask
@@ -251,14 +234,12 @@ def main(argv):
         np.array(multi_view_paths['ims'])[evaluating_view] \
         for multi_view_paths in img_path_frames_views
     ])
-    img_paths = np.stack(img_paths, 0)  # dj: change 2 dim list to matrix (frame_num, view_num)
+    img_paths = np.stack(img_paths, 0)
     if max_frames > 0:
         img_paths = img_paths[:max_frames]
 
-    # dj: skip some frame ------------------------
     index_keep = np.array(range(0, len(img_paths), cfg['eval_skip']))
     img_paths = img_paths[index_keep]
-    # dj: skip some frame ------------------------
 
     output_path_eval = os.path.join(cfg['eval_output']['dir'], subject if 'name' not in cfg['eval_output'].keys() else cfg['eval_output']['name'])
     os.makedirs(output_path_eval, exist_ok=True)
@@ -267,9 +248,6 @@ def main(argv):
 
     # copy config file
     copyfile(FLAGS.cfg, os.path.join(output_path_eval, 'config.yaml'))
-
-    easymocap_smpl_path = '../EasyMocap/output/sv1p/smpl/{}/*'.format(subject)
-    easymocap_smpl_files = sorted(glob.glob(easymocap_smpl_path))
 
     cameras = {}
     mesh_infos = {}
@@ -299,14 +277,6 @@ def main(argv):
             Rh = smpl_params['Rh'][0]  # (3,)
             Th = smpl_params['Th'][0]  # (3,)
 
-            easymocap_smpl_file = open(easymocap_smpl_files[idx])
-            easymocap_smpl_json = json.load(easymocap_smpl_file)
-
-            easymocap_betas = np.array(easymocap_smpl_json[0]['shapes'][0]) #(10,)
-            easymocap_poses = np.array([0.0, 0.0, 0.0] + easymocap_smpl_json[0]['poses'][0])  #(72,)
-            easymocap_Rh = np.array(easymocap_smpl_json[0]['Rh'][0])  #(3,)
-            easymocap_Th = np.array(easymocap_smpl_json[0]['Th'][0])  #(3,)
-
             all_betas[idx_frame].append(betas)
 
             # write camera info
@@ -323,9 +293,6 @@ def main(argv):
                 'Rh': Rh,
                 'Th': Th,
                 'poses': poses,
-                'easymocap_Rh': easymocap_Rh,
-                'easymocap_Th': easymocap_Th,
-                'easymocap_poses': easymocap_poses,
                 'joints': joints, 
                 'tpose_joints': tpose_joints
             }

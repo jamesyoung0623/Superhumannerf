@@ -1,6 +1,6 @@
 # Superhumannerf
 
-The codebase is implemented using [PyTorch](https://pytorch.org/) and tested on [Ubuntu](https://ubuntu.com/) 20.04.4 LTS.
+The codebase is modified from [HumanNeRF](https://pytorch.org/) and tested on [Ubuntu](https://ubuntu.com/) 20.04.4 LTS.
 
 ## Prerequisite
 
@@ -77,15 +77,8 @@ Finally, run the data preprocessing script.
 
 Now you can either download a pre-trained model by running the script.
 
-    ./scripts/download_model.sh 387
+    python train.py
 
-or train a model by yourself. We used 4 GPUs (NVIDIA RTX 2080 Ti) to train a model. 
-
-    python train.py --cfg configs/human_nerf/zju_mocap/387/adventure.yaml
-
-For sanity check, we provide a configuration that supports training on a single GPU (NVIDIA RTX 2080 Ti). Notice the performance is not guranteed for this configuration.
-
-    python train.py --cfg configs/human_nerf/zju_mocap/387/single_gpu.yaml
 
 ### `Render output`
 

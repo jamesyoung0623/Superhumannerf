@@ -4,19 +4,16 @@ class DatasetArgs(object):
 
         subjects = ['313', '315', '377', '386', '387', '390', '392', '393', '394']
 
-        if cfg.category == 'superhumannerf' and cfg.task == 'zju_mocap': # dj
+        if cfg.category == 'superhumannerf' and cfg.task == 'zju_mocap':
             for sub in subjects:
                 self.dataset_attrs.update({
                     f"zju_{sub}_train": {
-                        # "dataset_path": f"dataset/zju_mocap/{sub}",
-                        "dataset_path": f"../datasets/zju_mocap/{sub}", # dj
+                        "dataset_path": f"../datasets/zju_mocap/{sub}",
                         "keyfilter": cfg.train_keyfilter,
                         "ray_shoot_mode": cfg.train.ray_shoot_mode,
                     },
                     f"zju_{sub}_test": {
-                        # "dataset_path": f"dataset/zju_mocap/{sub}",
-                        #"dataset_path": f"../datasets/zju_mocap/{sub}", # dj
-                        "dataset_path": f"../datasets/zju_mocap/{sub}_eval", # dj for evaluation/progress
+                        "dataset_path": f"../datasets/zju_mocap/{sub}_eval",
                         "keyfilter": cfg.test_keyfilter,
                         "ray_shoot_mode": 'image',
                         "src_type": 'zju_mocap'
@@ -25,16 +22,16 @@ class DatasetArgs(object):
 
 
         subjectsPS = ['male-3-casual']
-        if cfg.category == 'superhumannerf' and cfg.task == 'people_snapshot': # dj
+        if cfg.category == 'superhumannerf' and cfg.task == 'people_snapshot':
             for sub in subjectsPS:
                 self.dataset_attrs.update({
                     f"{sub}_train": {
-                        "dataset_path": f"../datasets/people_snapshot/{sub}", # dj
+                        "dataset_path": f"../datasets/people_snapshot/{sub}",
                         "keyfilter": cfg.train_keyfilter,
                         "ray_shoot_mode": cfg.train.ray_shoot_mode,
                     },
                     f"{sub}_test": {
-                        "dataset_path": f"../datasets/people_snapshot/{sub}", # dj
+                        "dataset_path": f"../datasets/people_snapshot/{sub}",
                         "keyfilter": cfg.test_keyfilter,
                         "ray_shoot_mode": 'image',
                         "src_type": 'people_snapshot'

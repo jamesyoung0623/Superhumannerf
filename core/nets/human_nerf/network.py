@@ -1,21 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.transforms as transforms
 
 from core.utils.network_util import MotionBasisComputer
-from core.utils.rotation_conversions import matrix_to_axis_angle
 from core.nets.human_nerf.component_factory import load_mweight_vol_decoder, load_pose_decoder
-
-from datetime import datetime
 
 import tinycudann as tcnn
 import numpy as np
 
-from torch_efficient_distloss import eff_distloss, eff_distloss_native, flatten_eff_distloss
-from dvgo import Alphas2Weights
-
-
+from torch_efficient_distloss import eff_distloss
 
 class Network(nn.Module):
     def __init__(self, cfg):
@@ -199,17 +192,6 @@ class Network(nn.Module):
         return {'raws': torch.cat(raws, dim=0).cuda()}
     
 
-    def _batchify_rays(self, rays_flat, **kwargs):
-        all_ret = {}
-        for i in range(0, rays_flat.shape[0], self.cfg.chunk):
-            ret, distloss = self._render_rays(rays_flat[i:i+self.cfg.chunk], **kwargs)
-            for k in ret:
-                if k not in all_ret:
-                    all_ret[k] = []
-                all_ret[k].append(ret[k])
-        return {k : torch.cat(all_ret[k], 0) for k in all_ret}, distloss
-    
-
     def _sample_motion_fields(self, pts, motion_scale_Rs, motion_Ts, cnl_bbox_min_xyz, cnl_bbox_scale_xyz):
         orig_shape = list(pts.shape)
         pts = pts.reshape(-1, 3)
@@ -298,23 +280,21 @@ class Network(nn.Module):
         alpha = 1.0 - torch.exp(-sigma*dists)
         alpha = alpha * raw_mask[:, :, 0]    
 
-        T = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).cuda(), 1.0-alpha+1e-10], dim=1), dim=1)[:, :-1]
+        weights = alpha * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).cuda(), 1.0-alpha+1e-10], dim=1), dim=1)[:, :-1]
        
-        rgb_map = torch.sum(T[..., None] * rgb, dim=1)                      
-        depth_map = torch.sum(T * z_vals, dim=1)                           
-        T_sum = torch.sum(T, dim=1)                                      
+        rgb_map = torch.sum(weights[..., None] * rgb, dim=1)                      
+        depth_map = torch.sum(weights * z_vals, dim=1)                           
+        weights_sum = torch.sum(weights, dim=1)                                      
 
-        rgb_map = rgb_map + (1.0-T_sum[..., None]) * bgcolor[None, :]/255.
+        rgb_map = rgb_map + (1.0-weights_sum[..., None]) * bgcolor[None, :]/255.
 
-        return rgb_map, depth_map, T, T_sum, alpha, sigma
+        return rgb_map, depth_map, weights, weights_sum, alpha, sigma
 
-    def _render_rays(self, ray_batch, motion_scale_Rs, motion_Ts, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, non_rigid_mlp_input=None, bgcolor=None, **_):
-        rays_o, rays_d, near, far = self._unpack_ray_batch(ray_batch)
-
+    def _render_rays(self, rays_o, rays_d, near, far, motion_scale_Rs, motion_Ts, cnl_bbox_min_xyz, cnl_bbox_scale_xyz, non_rigid_mlp_input=None, bgcolor=None, **kwargs):
         z_vals = self._get_samples_along_ray(near, far)
         
         if self.cfg.perturb > 0.:
-            z_vals = self._stratified_sampling(z_vals)        
+            z_vals = self._stratified_sampling(z_vals)      
 
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
 
@@ -335,8 +315,8 @@ class Network(nn.Module):
         )
         raw = query_result['raws']
         
-        rgb_map, depth_map, T, T_sum, alpha, sigma = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
-
+        rgb_map, depth_map, weights, weights_sum, alpha, sigma = self._raw2outputs(raw, pts_mask, z_vals, rays_d, bgcolor)
+        
         B = self.cfg.patch.N_patches*(self.cfg.patch.size**2)
         N = 128
   
@@ -344,9 +324,9 @@ class Network(nn.Module):
         m = torch.cat([z_vals[..., :1], m], -1)
 
         interval = 1/N
-        distloss = eff_distloss(T, m, interval)
+        distloss = eff_distloss(weights, m, interval)
 
-        return {'rgb': rgb_map, 'depth': depth_map, 'T': T, 'T_sum': T_sum, 'alpha': alpha, 'sigma': sigma}, distloss
+        return {'rgb': rgb_map, 'depth': depth_map, 'weights': weights, 'weights_sum': weights_sum, 'alpha': alpha, 'sigma': sigma}, distloss
 
 
     def _get_motion_base(self, dst_Rs, dst_Ts, cnl_gtfms):
@@ -404,15 +384,27 @@ class Network(nn.Module):
         ### -----------------------------------------
         rays_o, rays_d = rays
         rays_shape = rays_d.shape
-
         rays_o = torch.reshape(rays_o, [-1, 3]).float()
         rays_d = torch.reshape(rays_d, [-1, 3]).float()
-        packed_ray_infos = torch.cat([rays_o, rays_d, near, far], -1)
 
-        all_ret, distloss = self._batchify_rays(packed_ray_infos, **kwargs)
+        all_ret = {}
+        total_distloss = None
+        for i in range(0, rays_o.shape[0], self.cfg.chunk):
+            ret, distloss = self._render_rays(rays_o[i:i+self.cfg.chunk], rays_d[i:i+self.cfg.chunk], near[i:i+self.cfg.chunk], far[i:i+self.cfg.chunk], **kwargs)
+            for k in ret:
+                if k not in all_ret:
+                    all_ret[k] = []
+                all_ret[k].append(ret[k])
+
+            if total_distloss == None:
+                total_distloss = distloss
+            else:
+                total_distloss += distloss
+
+        all_ret = {k : torch.cat(all_ret[k], 0) for k in all_ret}
 
         for k in all_ret:
             k_shape = list(rays_shape[:-1]) + list(all_ret[k].shape[1:])
             all_ret[k] = torch.reshape(all_ret[k], k_shape)
 
-        return all_ret, distloss
+        return all_ret, total_distloss 

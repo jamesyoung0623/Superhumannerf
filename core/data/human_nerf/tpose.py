@@ -6,14 +6,8 @@ import cv2
 import torch
 import torch.utils.data
 
-from core.utils.body_util import \
-    body_pose_to_body_RTs, \
-    get_canonical_global_tfms, \
-    approx_gaussian_bone_volumes
-from core.utils.camera_util import \
-    get_camrot, \
-    get_rays_from_KRT, \
-    rays_intersect_3d_bbox
+from core.utils.body_util import body_pose_to_body_RTs, get_canonical_global_tfms, approx_gaussian_bone_volumes
+from core.utils.camera_util import get_camrot, get_rays_from_KRT, rays_intersect_3d_bbox
 
 from configs import cfg
 
