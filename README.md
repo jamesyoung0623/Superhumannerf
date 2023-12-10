@@ -1,7 +1,5 @@
 # Superhumannerf
 
-The codebase is modified from [HumanNeRF](https://github.com/chungyiweng/humannerf)
-
 ## Prerequisite
 
 ### `Create environment`
