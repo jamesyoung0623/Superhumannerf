@@ -27,9 +27,9 @@ FLAGS = flags.FLAGS
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/386.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/387.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/390.yaml', 'the path of config file')
-flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/392.yaml', 'the path of config file')
+# flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/392.yaml', 'the path of config file')
 # flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/393.yaml', 'the path of config file')
-# flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/394.yaml', 'the path of config file')
+flags.DEFINE_string('cfg', './tools/prepare_zju_mocap/394.yaml', 'the path of config file')
 
 MODEL_DIR = './third_parties/smpl/models'
 
