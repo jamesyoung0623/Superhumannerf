@@ -2,9 +2,7 @@
 
 ## Prerequisite
 
-### `Create environment`
-
-Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
+### Create environment
 
 Create and activate a virtual environment.
 
@@ -33,14 +31,21 @@ Install torch-scatter
     pip install torch-scatter -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
 
 
-### `Download SMPL model`
+### Download SMPL model
 
-Download the gender neutral SMPL model from [here](https://smplify.is.tue.mpg.de/).
-For simplicity, you can download the processed model from [here](https://drive.google.com/file/d/18zVsX3TENF_owZeJcxyV8qM-EJyCUE9D/view?usp=sharing), and put it in ./third_parties/smpl/models.
+Download the gender neutral SMPL model from [here](https://smplify.is.tue.mpg.de/), and unpack **mpips_smplify_public_v2.zip**.
+
+Copy the smpl model.
+
+    SMPL_DIR=/path/to/smpl
+    MODEL_DIR=$SMPL_DIR/smplify_public/code/models
+    cp $MODEL_DIR/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl third_parties/smpl/models
+
+Follow [this page](https://github.com/vchoutas/smplx/tree/master/tools) to remove Chumpy objects from the SMPL model.
 
 ## Run on ZJU-Mocap Dataset
 
-### `Prepare a dataset`
+### Prepare a dataset
 
 First, download ZJU-Mocap dataset from [here](https://github.com/zju3dv/neuralbody/blob/master/INSTALL.md#zju-mocap-dataset). 
 
