@@ -17,18 +17,14 @@ Install the required packages.
 
     pip install -r requirements.txt
 
+Install hydra.
+
+    pip install hydra-core --upgrade
+
 Make sure cuda version is right
 
     export LD_LIBRARY_PATH=/usr/local/cuda-11.7/lib64:$LD_LIBRARY_PATH
     export PATH=/usr/local/cuda-11.7/bin:$PATH
-
-Install tinycudann
-
-    pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-
-Install torch-scatter
-
-    pip install torch-scatter -f https://data.pyg.org/whl/torch-1.13.0+cu117.html
 
 
 ### Download SMPL model
@@ -64,32 +60,17 @@ Finally, run the data preprocessing script.
 
     python ./tools/prepare_dataset.py
 
-### `Train models`
+### Train
 
     python train.py
 
+### Evaluate
 
-### `Render output`
+    python eval.py
 
-Render the frame input (i.e., observed motion sequence).
+### Render output
 
-    python run.py \
-        --type movement \
-        --cfg configs/human_nerf/zju_mocap/387/adventure.yaml 
-
-Run free-viewpoint rendering on a particular frame (e.g., frame 128).
-
-    python run.py \
-        --type freeview \
-        --cfg configs/human_nerf/zju_mocap/387/adventure.yaml \
-        freeview.frame_idx 128
-
-
-Render the learned canonical appearance (T-pose).
-
-    python run.py \
-        --type tpose \
-        --cfg configs/human_nerf/zju_mocap/387/adventure.yaml 
+    python run.py
 
 ## Acknowledgement
 

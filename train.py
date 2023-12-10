@@ -24,10 +24,7 @@ def make_deterministic(seed=0):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    #torch.backends.cudnn.enabled = False
-    #torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
-    #torch.use_deterministic_algorithms(True, warn_only=True)
 
     os.environ["PYTHONHASHSEED"] = str(seed)
     os.environ["CUDA_LAUNCH_BLOCKING"] = str(seed)
@@ -36,8 +33,8 @@ def make_deterministic(seed=0):
 
 # @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/313/', config_name='single_gpu_hash')
 # @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/315/', config_name='single_gpu_hash')
-# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/377/', config_name='single_gpu_hash')
-@hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/386/', config_name='single_gpu_hash')
+@hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/377/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/386/', config_name='single_gpu_hash')
 # @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/387/', config_name='single_gpu_hash')
 # @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/390/', config_name='single_gpu_hash')
 # @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/392/', config_name='single_gpu_hash')

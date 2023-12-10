@@ -114,7 +114,7 @@ def run_movement(cfg, render_folder_name='movement'):
             net_output, _ = model(**data, iter_val=cfg.eval_iter)
 
         rgb = net_output['rgb']
-        alpha = net_output['T_sum']
+        alpha = net_output['weights_sum']
 
         width = batch['img_width']
         height = batch['img_height']
@@ -136,9 +136,15 @@ def run_movement(cfg, render_folder_name='movement'):
     
     writer.finalize()
 
-@hydra.main(version_base=None, config_path='configs/human_nerf/wild/pitching/', config_name='single_gpu_hash')
-#@hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/386/', config_name='single_gpu_hash')
-#@hydra.main(version_base=None, config_path='configs/human_nerf/people_snapshot/male-3-casual/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/313/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/315/', config_name='single_gpu_hash')
+@hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/377/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/386/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/387/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/390/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/392/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/393/', config_name='single_gpu_hash')
+# @hydra.main(version_base=None, config_path='configs/human_nerf/zju_mocap/394/', config_name='single_gpu_hash')
 def main(cfg):
     run_movement(cfg)
     run_tpose(cfg)

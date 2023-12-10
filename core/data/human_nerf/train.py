@@ -16,6 +16,7 @@ class Dataset(torch.utils.data.Dataset):
     def __init__(self, cfg, dataset_path, keyfilter=None, maxframes=-1, bgcolor=None, ray_shoot_mode='image', skip=1, **_):
         print('[Dataset Path]', dataset_path) 
         self.cfg = cfg
+        
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 

@@ -68,7 +68,6 @@ progress:
   shuffle: False
   drop_last: False
   progress_interval: 200     
-  #eval_interval: 20000    
 
 movement:
   dataset_module: 'core.data.human_nerf.train'

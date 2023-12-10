@@ -20,12 +20,12 @@ def create_dataset(cfg, data_type='train'):
 
     # customize dataset arguments according to dataset type
     args['bgcolor'] = None if data_type == 'train' else cfg.bgcolor
-    if data_type == 'progress':
-        total_train_imgs = _get_total_train_imgs(args['dataset_path'])
+    
+    total_train_imgs = _get_total_train_imgs(args['dataset_path'])
+
+    if data_type == 'progress' or data_type == 'tpose' or data_type == 'freeview':
         args['skip'] = total_train_imgs // 16
         args['maxframes'] = 16
-    if data_type in ['freeview', 'tpose']:
-        args['skip'] = cfg.render_skip
 
     dataset = _query_dataset(cfg, data_type)
     dataset = dataset(cfg, **args)

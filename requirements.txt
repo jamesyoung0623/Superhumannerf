@@ -23,6 +23,5 @@ tensorboard
 scikit-image
 torch_efficient_distloss
 ninja
-hydra-core --upgrade
 git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
 torch-scatter -f https://data.pyg.org/whl/torch-1.13.0+cu117.html

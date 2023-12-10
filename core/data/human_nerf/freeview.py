@@ -11,40 +11,28 @@ from core.utils.body_util import body_pose_to_body_RTs, get_canonical_global_tfm
 from core.utils.camera_util import rotate_camera_by_frame_idx, apply_global_tfm_to_camera, get_rays_from_KRT, rays_intersect_3d_bbox
 from core.utils.file_util import list_files, split_path
 
-from configs import cfg
-
-
 class Dataset(torch.utils.data.Dataset):
     ROT_CAM_PARAMS = {
         'zju_mocap': {'rotate_axis': 'z', 'inv_angle': True},
         'wild': {'rotate_axis': 'y', 'inv_angle': False}
     }
 
-    def __init__(
-            self, 
-            dataset_path,
-            keyfilter=None,
-            maxframes=-1,
-            skip=1,
-            bgcolor=None,
-            src_type="zju_mocap",
-            **_):
-
+    def __init__(self, cfg, dataset_path, keyfilter=None, maxframes=-1, skip=1, bgcolor=None, src_type="zju_mocap", **_):
         print('[Dataset Path]', dataset_path) 
-
+        self.cfg = cfg
+        
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
-        self.canonical_joints, self.canonical_bbox = \
-            self.load_canonical_joints()
+        self.canonical_joints, self.canonical_bbox = self.load_canonical_joints()
 
         if 'motion_weights_priors' in keyfilter:
-            self.motion_weights_priors = \
-                approx_gaussian_bone_volumes(
-                    self.canonical_joints, 
-                    self.canonical_bbox['min_xyz'],
-                    self.canonical_bbox['max_xyz'],
-                    grid_size=cfg.mweight_volume.volume_size).astype('float32')
+            self.motion_weights_priors = approx_gaussian_bone_volumes(
+                self.canonical_joints, 
+                self.canonical_bbox['min_xyz'],
+                self.canonical_bbox['max_xyz'],
+                grid_size=self.cfg.mweight_volume.volume_size
+            ).astype('float32')
 
         cameras = self.load_train_cameras()
         mesh_infos = self.load_train_mesh_infos()
@@ -54,10 +42,10 @@ class Dataset(torch.utils.data.Dataset):
         if maxframes > 0:
             self.framelist = self.framelist[:maxframes]  
 
-        self.train_frame_idx = cfg.freeview.frame_idx
+        self.train_frame_idx = self.cfg.freeview.frame_idx
         print(f' -- Frame Idx: {self.train_frame_idx}')
 
-        self.total_frames = cfg.render_frames
+        self.total_frames = 16
         print(f' -- Total Rendered Frames: {self.total_frames}')
 
         self.train_frame_name = framelist[self.train_frame_idx]
@@ -83,10 +71,9 @@ class Dataset(torch.utils.data.Dataset):
             cameras = pickle.load(f)
         return cameras
 
-    @staticmethod
-    def skeleton_to_bbox(skeleton):
-        min_xyz = np.min(skeleton, axis=0) - cfg.bbox_offset
-        max_xyz = np.max(skeleton, axis=0) + cfg.bbox_offset
+    def skeleton_to_bbox(self, skeleton):
+        min_xyz = np.min(skeleton, axis=0) - self.cfg.bbox_offset
+        max_xyz = np.max(skeleton, axis=0) + self.cfg.bbox_offset
 
         return {
             'min_xyz': min_xyz,
@@ -127,7 +114,7 @@ class Dataset(torch.utils.data.Dataset):
                 trans=trans,
                 **self.ROT_CAM_PARAMS[self.src_type])
         K = self.train_camera['intrinsics'].copy()
-        K[:2] *= cfg.resize_img_scale
+        K[:2] *= self.cfg.resize_img_scale
         return K, E
 
     def load_image(self, frame_name, bg_color):
@@ -147,15 +134,20 @@ class Dataset(torch.utils.data.Dataset):
 
         alpha_mask = alpha_mask / 255.
         img = alpha_mask * orig_img + (1.0 - alpha_mask) * bg_color[None, None, :]
-        if cfg.resize_img_scale != 1.:
-            img = cv2.resize(img, None, 
-                             fx=cfg.resize_img_scale,
-                             fy=cfg.resize_img_scale,
-                             interpolation=cv2.INTER_LANCZOS4)
-            alpha_mask = cv2.resize(alpha_mask, None, 
-                                    fx=cfg.resize_img_scale,
-                                    fy=cfg.resize_img_scale,
-                                    interpolation=cv2.INTER_LINEAR)
+        if self.cfg.resize_img_scale != 1.:
+            img = cv2.resize(
+                img, None, 
+                fx=self.cfg.resize_img_scale,
+                fy=self.cfg.resize_img_scale,
+                interpolation=cv2.INTER_LANCZOS4
+            )
+            
+            alpha_mask = cv2.resize(
+                alpha_mask, None, 
+                fx=self.cfg.resize_img_scale,
+                fy=self.cfg.resize_img_scale,
+                interpolation=cv2.INTER_LINEAR
+            )
                                 
         return img, alpha_mask
 

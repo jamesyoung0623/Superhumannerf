@@ -21,23 +21,6 @@ class DatasetArgs(object):
                 })
 
 
-        subjectsPS = ['male-3-casual']
-        if cfg.category == 'superhumannerf' and cfg.task == 'people_snapshot':
-            for sub in subjectsPS:
-                self.dataset_attrs.update({
-                    f"{sub}_train": {
-                        "dataset_path": f"../datasets/people_snapshot/{sub}",
-                        "keyfilter": cfg.train_keyfilter,
-                        "ray_shoot_mode": cfg.train.ray_shoot_mode,
-                    },
-                    f"{sub}_test": {
-                        "dataset_path": f"../datasets/people_snapshot/{sub}",
-                        "keyfilter": cfg.test_keyfilter,
-                        "ray_shoot_mode": 'image',
-                        "src_type": 'people_snapshot'
-                    },
-                })
-
         if cfg.category == 'superhumannerf' and cfg.task == 'wild':
             self.dataset_attrs.update({
                 "wild_pitching_train": {

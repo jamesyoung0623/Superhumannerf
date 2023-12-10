@@ -9,45 +9,35 @@ import torch.utils.data
 from core.utils.body_util import body_pose_to_body_RTs, get_canonical_global_tfms, approx_gaussian_bone_volumes
 from core.utils.camera_util import get_camrot, get_rays_from_KRT, rays_intersect_3d_bbox
 
-from configs import cfg
-
-
 class Dataset(torch.utils.data.Dataset):
     RENDER_SIZE=512
     CAM_PARAMS = {
         'radius': 6.0, 'focal': 1250.
     }
 
-    def __init__(
-            self, 
-            dataset_path,
-            keyfilter=None,
-            bgcolor=None,
-            src_type="zju_mocap",
-            **_):
+    def __init__(self, cfg, dataset_path, keyfilter=None, bgcolor=None, src_type="zju_mocap", **_):
         print('[Dataset Path]', dataset_path) 
-
+        self.cfg = cfg
+        
         self.dataset_path = dataset_path
         self.image_dir = os.path.join(dataset_path, 'images')
 
-        self.canonical_joints, self.canonical_bbox = \
-            self.load_canonical_joints()
+        self.canonical_joints, self.canonical_bbox = self.load_canonical_joints()
             
         if 'motion_weights_priors' in keyfilter:
-            self.motion_weights_priors = \
-                approx_gaussian_bone_volumes(
-                    self.canonical_joints, 
-                    self.canonical_bbox['min_xyz'],
-                    self.canonical_bbox['max_xyz'],
-                    grid_size=cfg.mweight_volume.volume_size).astype('float32')
+            self.motion_weights_priors =  approx_gaussian_bone_volumes(
+                self.canonical_joints, 
+                self.canonical_bbox['min_xyz'],
+                self.canonical_bbox['max_xyz'],
+                grid_size=self.cfg.mweight_volume.volume_size
+            ).astype('float32')
 
-        self.total_frames = cfg.render_frames
+        self.total_frames = 16
         print(f' -- Total Frames: {self.total_frames}')
 
         self.img_size = self.RENDER_SIZE
 
-        K, E = self.setup_camera(img_size = self.img_size, 
-                                 **self.CAM_PARAMS)
+        K, E = self.setup_camera(img_size = self.img_size, **self.CAM_PARAMS)
         self.camera = {
             'K': K,
             'E': E
@@ -62,9 +52,7 @@ class Dataset(torch.utils.data.Dataset):
         y = -0.25
         z = radius
         campos = np.array([x, y, z], dtype='float32')
-        camrot = get_camrot(campos, 
-                            lookat=np.array([0, y, 0.]),
-                            inv_camera=True)
+        camrot = get_camrot(campos, lookat=np.array([0, y, 0.]), inv_camera=True)
 
         E = np.eye(4, dtype='float32')
         E[:3, :3] = camrot
@@ -87,10 +75,9 @@ class Dataset(torch.utils.data.Dataset):
 
         return canonical_joints, canonical_bbox
 
-    @staticmethod
-    def skeleton_to_bbox(skeleton):
-        min_xyz = np.min(skeleton, axis=0) - cfg.bbox_offset
-        max_xyz = np.max(skeleton, axis=0) + cfg.bbox_offset
+    def skeleton_to_bbox(self, skeleton):
+        min_xyz = np.min(skeleton, axis=0) - self.cfg.bbox_offset
+        max_xyz = np.max(skeleton, axis=0) + self.cfg.bbox_offset
 
         return {
             'min_xyz': min_xyz,

@@ -14,18 +14,14 @@ from core.utils.network_util import set_requires_grad
 from core.utils.train_util import cpu_data_to_gpu, Timer
 from core.utils.image_util import tile_images, to_8b_image
 
-from core.nets import create_network
-from core.utils.image_util import ImageWriter, to_8b_image, to_8b3ch_image
-
 from torch.utils.tensorboard import SummaryWriter
 
 from skimage.metrics import peak_signal_noise_ratio as compare_psnr
 from skimage.metrics import structural_similarity as compare_ssim
 
-img2mse = lambda x, y : torch.mean((x - y) ** 2)
-img2l1 = lambda x, y : torch.mean(torch.abs(x-y))
 
 EXCLUDE_KEYS_TO_GPU = ['frame_name', 'img_width', 'img_height', 'ray_mask', 'framelist', 'coords']
+
 
 def _unpack_imgs(rgbs, patch_masks, bgcolor, targets, div_indices):
     N_patch = len(div_indices) - 1
@@ -39,6 +35,7 @@ def _unpack_imgs(rgbs, patch_masks, bgcolor, targets, div_indices):
 
     return patch_imgs
 
+
 def _unpack_weights(weights, patch_masks, div_indices):
     N_patch = len(div_indices) - 1
 
@@ -47,6 +44,7 @@ def _unpack_weights(weights, patch_masks, div_indices):
         patch_weights[i, patch_masks[i]] = weights[div_indices[i]:div_indices[i+1]]
 
     return patch_weights
+
 
 def _unpack_weights_sum(weights_sum, patch_masks, div_indices):
     N_patch = len(div_indices) - 1
@@ -57,6 +55,7 @@ def _unpack_weights_sum(weights_sum, patch_masks, div_indices):
 
     return patch_weights_sum
 
+
 def _unpack_alpha(alpha, patch_masks, div_indices):
     N_patch = patch_masks.size(0)
     patch_size = patch_masks.size(1)
@@ -66,6 +65,7 @@ def _unpack_alpha(alpha, patch_masks, div_indices):
         patch_alpha[i, patch_masks[i]] = alpha[div_indices[i]:div_indices[i+1]]
 
     return patch_alpha
+
 
 def _unpack_sigma(sigma, patch_masks, div_indices):
     N_patch = patch_masks.size(0)
@@ -113,7 +113,6 @@ class Trainer(object):
 
         print('************************************')
         
-        #self.test_loader = create_dataloader(self.cfg, 'movement')
         self.swriter = SummaryWriter(os.path.join(self.logdir, 'logs'))
         
         self.mse_map_dict = {}
@@ -138,7 +137,7 @@ class Trainer(object):
             losses['lpips'] = torch.mean(lpips_loss)
         
         if 'rgb_loss' in loss_names:
-            losses['rgb_loss'] = img2mse(rgb, targets)
+            losses['rgb_loss'] = torch.mean((rgb - targets) ** 2)
 
         if 'mask_loss' in loss_names:
             losses['mask_loss'] = torch.mean(((torch.flatten(weights_sum) - torch.flatten(torch.ones_like(weights_sum))) ** 2) * torch.flatten(patch_masks.float()))
@@ -214,16 +213,8 @@ class Trainer(object):
         
         return frameWeight * sum(train_losses), {loss_names[i]: ori_losses[i] for i in range(len(loss_names))}, mse_map_norm
 
-    def train_begin(self, train_dataloader):
-        assert train_dataloader.batch_size == 1
-        self.network.train()
-        self.training = True
-
-    def train_end(self):
-        pass
-
     def train(self, epoch, train_dataloader):
-        self.train_begin(train_dataloader=train_dataloader)
+        self.network.train()
 
         self.timer.begin()
         for batch_idx, batch in enumerate(train_dataloader):
@@ -309,7 +300,6 @@ class Trainer(object):
     def progress_begin(self):
         self.network.eval()
         self.cfg.perturb = 0.
-        self.training = False
 
     def progress_end(self):
         self.network.train()
@@ -376,9 +366,6 @@ class Trainer(object):
         self.swriter.add_scalar('SSIM', ssim_mean, self.iter//self.cfg.progress.progress_interval)
         self.swriter.add_scalar('LPIPS', lpips_mean, self.iter//self.cfg.progress.progress_interval)
 
-        #if self.iter % self.cfg.progress.eval_interval == 0:
-        #    self.eval_model(render_folder_name='eval', n=self.iter/self.cfg.progress.eval_interval)
-        
         self.progress_end()
         return
 
@@ -401,100 +388,3 @@ class Trainer(object):
 
         self.network.load_state_dict(ckpt['network'], strict=False)
         self.optimizer.load_state_dict(ckpt['optimizer'])
-
-    ######################################################3
-    ## Eval
-    
-    def load_network(self, checkpoint):
-        model = create_network()
-        ckpt_path = os.path.join(self.logdir, f'{checkpoint}.tar')
-        ckpt = torch.load(ckpt_path, map_location='cuda:0')
-        model.load_state_dict(ckpt['network'], strict=False)
-        print('load network from ', ckpt_path)
-        return model.cuda()
-
-    def unpack_alpha_map(self, alpha_vals, ray_mask, width, height):
-        alpha_map = np.zeros((height * width), dtype='float32')
-        alpha_map[ray_mask] = alpha_vals
-        return alpha_map.reshape((height, width))
-
-    def unpack_to_image(self, width, height, ray_mask, bgcolor, rgb, alpha, truth=None):
-        rgb_image = np.full((height * width, 3), bgcolor, dtype='float32')
-        truth_image = np.full((height * width, 3), bgcolor, dtype='float32')
-
-        rgb_image[ray_mask] = rgb
-        rgb_image = to_8b_image(rgb_image.reshape((height, width, 3)))
-
-        if truth is not None:
-            truth_image[ray_mask] = truth
-            truth_image = to_8b_image(truth_image.reshape((height, width, 3)))
-
-        alpha_map = self.unpack_alpha_map(alpha, ray_mask, width, height)
-        alpha_image = to_8b3ch_image(alpha_map)
-
-        return rgb_image, alpha_image, truth_image
-
-    def lpips_metric(self, model, pred, target):
-        # convert range from 0-1 to -1-1
-        processed_pred = torch.from_numpy(pred).float().unsqueeze(0).cuda() * 2. - 1.
-        processed_target = torch.from_numpy(target).float().unsqueeze(0).cuda() * 2. - 1.
-
-        lpips_loss = model(processed_pred.permute(0, 3, 1, 2), processed_target.permute(0, 3, 1, 2))
-        return torch.mean(lpips_loss).cpu().detach().item()
-
-    def eval_model(self, render_folder_name='eval', n=0):
-        set_requires_grad(self.lpips, requires_grad=False)
-
-        out_folder_name = f'iter_{self.iter}_{render_folder_name}'
-        
-        self.writer = ImageWriter(output_dir=self.logdir, exp_name=out_folder_name)
-
-        PSNRA = []
-        SSIMA = []
-        LPIPSA = []
-        for idx, batch in enumerate(self.test_loader):
-            for k, v in batch.items():
-                batch[k] = v[0]
-            width = batch['img_width']
-            height = batch['img_height']
-            ray_mask = batch['ray_mask']
-
-            # prediction
-            data = cpu_data_to_gpu(batch, exclude_keys=EXCLUDE_KEYS_TO_GPU + ['target_rgbs'])
-            with torch.no_grad():
-                net_output, distloss = self.network(self.iter, **data)
-            rgb = net_output['rgb']
-            alpha = net_output['alpha']
-
-            rgb_img, alpha_img, truth_img = self.unpack_to_image(
-                width, height, ray_mask, np.array(self.cfg.bgcolor) / 255.,
-                rgb.data.cpu().numpy(),
-                alpha.data.cpu().numpy(),
-                batch['target_rgbs']
-            )
-                
-            imgs = [rgb_img, truth_img, alpha_img]
-            img_out = np.concatenate(imgs, axis=1)
-            self.writer.append(img_out, img_name=batch['frame_name'])
-            rgb_img_norm = rgb_img / 255.
-            truth_img_norm = truth_img / 255.
-
-            psnr = compare_psnr(rgb_img_norm, truth_img_norm)
-            ssim = compare_ssim(rgb_img_norm, truth_img_norm, data_range=1, channel_axis=2)
-            lpips = self.lpips_metric(model=self.lpips, pred=rgb_img_norm, target=truth_img_norm)
-            print(f"Checkpoint [iter_{self.iter}] - {idx}/{len(self.test_loader)}: PSNR is {psnr:.4f}, SSIM is {ssim:.4f}, LPIPS is {lpips*1000:.4f}")
-
-            PSNRA.append(psnr)
-            SSIMA.append(ssim)
-            LPIPSA.append(lpips)
-        
-        psnr_mean = np.mean(PSNRA).item()
-        ssim_mean = np.mean(SSIMA).item()
-        lpips_mean = np.mean(LPIPSA).item()
-        print(f"Checkpoint [iter_{self.iter}]: mPSNR is {psnr_mean}, mSSIM is {ssim_mean}, mLPIPS is {lpips_mean*1000}")
-        self.writer.finalize()
-
-        self.swriter.add_scalar('AllCP_PSNR', psnr_mean, n)
-        self.swriter.add_scalar('AllCP_SSIM', ssim_mean, n)
-        self.swriter.add_scalar('AllCP_LPIPS', lpips_mean*1000, n)
-        
