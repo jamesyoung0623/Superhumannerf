@@ -233,15 +233,15 @@ class Trainer(object):
             if batch['frame_name'] not in self.mse_map_dict:
                 self.mse_map_dict[batch['frame_name']] = np.zeros((512, 512))
                 
-            if batch['frame_name'] not in self.sample_mask_dict:
-                self.sample_mask_dict[batch['frame_name']] = 255*(batch['ray_mask'].numpy().reshape(512, 512).astype(int))
-                self.sample_mask_dict[batch['frame_name']][batch['subject_mask'].numpy()[:, :, 0] > 0.] = 0
+            # if batch['frame_name'] not in self.sample_mask_dict:
+            #     self.sample_mask_dict[batch['frame_name']] = 255*(batch['ray_mask'].numpy().reshape(512, 512).astype(int))
+            #     self.sample_mask_dict[batch['frame_name']][batch['subject_mask'].numpy()[:, :, 0] > 0.] = 0
             
-            for coord in batch['coords']:
-                x_min, x_max, y_min, y_max = coord[0].item(), coord[1].item(), coord[2].item(), coord[3].item()
-                self.sample_mask_dict[batch['frame_name']][y_min:y_max, x_min:x_max] = 128
+            # for coord in batch['coords']:
+            #     x_min, x_max, y_min, y_max = coord[0].item(), coord[1].item(), coord[2].item(), coord[3].item()
+            #     self.sample_mask_dict[batch['frame_name']][y_min:y_max, x_min:x_max] = 128
 
-            im1 = Image.fromarray(self.sample_mask_dict[batch['frame_name']].astype('uint8'))
+            # im1 = Image.fromarray(self.sample_mask_dict[batch['frame_name']].astype('uint8'))
             
             train_loss, ori_loss_dict, mse_map_norm = self.get_loss(
                 net_output=net_output,
@@ -253,11 +253,11 @@ class Trainer(object):
                 frame_name=batch['frame_name']
             )
             
-            im2 = Image.fromarray(mse_map_norm).convert('L')
-            dst = Image.new('L', (im1.width + im2.width, im1.height))
-            dst.paste(im1, (0, 0))
-            dst.paste(im2, (im1.width, 0))
-            dst.save('ray_sample.jpg')
+            # im2 = Image.fromarray(mse_map_norm).convert('L')
+            # dst = Image.new('L', (im1.width + im2.width, im1.height))
+            # dst.paste(im1, (0, 0))
+            # dst.paste(im2, (im1.width, 0))
+            # dst.save('ray_sample.jpg')
 
             # ori_loss_dict['distloss'] = distloss
             # train_loss += distloss

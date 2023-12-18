@@ -57,7 +57,7 @@ train:
     rgb_loss: 0.5
     opacity: 0.1             
     mask_loss: 0.0
-    tvloss_rgb: 0.0         
+    tvloss_rgb: 0.0        
     tvloss_sigma: 0.0           
   opacity_kick_in_iter: 5000         
 
@@ -67,7 +67,7 @@ progress:
   batch_size: 1
   shuffle: False
   drop_last: False
-  progress_interval: 200     
+  progress_interval: 1000     
 
 movement:
   dataset_module: 'core.data.human_nerf.train'

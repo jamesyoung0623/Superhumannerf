@@ -50,7 +50,7 @@ train:
   lrate_decay: 100
   optimizer: 'adam'
   ray_shoot_mode: 'patch'
-  maxiter: 20000        
+  maxiter: 10000        
   log_interval: 10          
   lossweights:
     lpips: 1.0
@@ -67,7 +67,7 @@ progress:
   batch_size: 1
   shuffle: False
   drop_last: False
-  progress_interval: 200     
+  progress_interval: 1000     
 
 movement:
   dataset_module: 'core.data.human_nerf.train'
