@@ -45,33 +45,38 @@ Follow [this page](https://github.com/vchoutas/smplx/tree/master/tools) to remov
 
 First, download ZJU-Mocap dataset from [here](https://github.com/zju3dv/neuralbody/blob/master/INSTALL.md#zju-mocap-dataset). 
 
-Second, modify the yaml file of subject 387 at `tools/prepare_zju_mocap/387.yaml`. In particular,  `zju_mocap_path` should be the directory path of the ZJU-Mocap dataset.
+Second, modify the yaml file of subject 377 at `tools/prepare_zju_mocap/377.yaml`. Specifically,  `zju_mocap_path` should be the directory path of the ZJU-Mocap dataset.
 
 ```
 dataset:
     zju_mocap_path: /path/to/zju_mocap
-    subject: '387'
+    subject: '377'
     sex: 'neutral'
 
 ...
 ```
-    
+
 Finally, run the data preprocessing script.
 
     python ./tools/prepare_dataset.py
 
+For other subjects, follow the same process.
+
 ### Train
+Select the subject configuration in train.py and run
 
     python train.py
 
 ### Evaluate
+Select the subject configuration in eval.py and run
 
     python eval.py
 
 ### Render output
+Select the subject configuration in run.py and run
 
     python run.py
 
 ## Acknowledgement
 
-The implementation is modified from [HumanNeRF](https://github.com/chungyiweng/humannerf), which took reference from [NeRF-PyTorch](https://github.com/yenchenlin/nerf-pytorch), [Neural Body](https://github.com/zju3dv/neuralbody), [Neural Volume](https://github.com/facebookresearch/neuralvolumes), [LPIPS](https://github.com/richzhang/PerceptualSimilarity), and [YACS](https://github.com/rbgirshick/yacs). Thanks for their great work.
+The implementation is modified from [HumanNeRF](https://github.com/chungyiweng/humannerf), which took reference from [NeRF-PyTorch](https://github.com/yenchenlin/nerf-pytorch), [Neural Body](https://github.com/zju3dv/neuralbody), [Neural Volume](https://github.com/facebookresearch/neuralvolumes), [LPIPS](https://github.com/richzhang/PerceptualSimilarity), and [YACS](https://github.com/rbgirshick/yacs). We use the python bindings provided by [Instant-NGP](https://github.com/NVlabs/instant-ngp). Thanks for their great work.
